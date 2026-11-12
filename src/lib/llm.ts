@@ -208,6 +208,8 @@ async function chatCompletion(
       tool_choice: "auto",
       stream,
     }),
+    // Prevent hung OpenAI calls from freezing the chat Send button forever.
+    signal: AbortSignal.timeout(25_000),
   });
 
   if (!res.ok) {

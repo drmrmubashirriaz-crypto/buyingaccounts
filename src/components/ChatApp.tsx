@@ -99,6 +99,7 @@ export default function ChatApp() {
   const [hasKey, setHasKey] = useState(false);
   const [allowMockComplete, setAllowMockComplete] = useState(false);
   const [streamDraft, setStreamDraft] = useState<string | null>(null);
+  const [error, setError] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -125,10 +126,21 @@ export default function ChatApp() {
         : null;
     const q = existing ? `?chatId=${existing}` : "";
     Promise.all([
-      fetch("/api/chat/status").then((r) => r.json()),
-      fetch(`/api/chat${q}`).then((r) => r.json()),
+      fetch("/api/chat/status").then(async (r) => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.error || `status ${r.status}`);
+        return data;
+      }),
+      fetch(`/api/chat${q}`).then(async (r) => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.error || `chat ${r.status}`);
+        return data;
+      }),
     ])
       .then(async ([status, data]) => {
+        if (!data?.chat?.id) {
+          throw new Error(data?.error || "Chat failed to open");
+        }
         applyMode({
           mode: status.mode,
           hasKey: status.hasKey,
@@ -136,6 +148,7 @@ export default function ChatApp() {
           allowMockComplete: status.allowMockComplete,
         });
         setChat(data.chat);
+        setError("");
         applyMode(data);
         localStorage.setItem("ba_chat_id", data.chat.id);
         if (data.chat.orderId) {
@@ -144,6 +157,10 @@ export default function ChatApp() {
           );
           if (o.order) setOrder(o.order);
         }
+      })
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : "Could not open chat");
+        setChat(null);
       })
       .finally(() => setBooting(false));
   }, []);
@@ -160,6 +177,7 @@ export default function ChatApp() {
   async function send(text: string) {
     if (!text.trim() || sending || !chat) return;
     setSending(true);
+    setError("");
     setInput("");
     setStreamDraft("");
 
@@ -187,7 +205,10 @@ export default function ChatApp() {
       });
 
       if (!res.ok || !res.body) {
-        throw new Error("Stream failed");
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(
+          (errBody as { error?: string }).error || `Stream failed (${res.status})`
+        );
       }
 
       const reader = res.body.getReader();
@@ -234,19 +255,33 @@ export default function ChatApp() {
       }
 
       if (!finished) throw new Error("Stream ended early");
-    } catch {
+    } catch (streamErr) {
       if (!finished) {
-        // Fallback non-stream only if the turn never completed
-        const res = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chatId: chat.id, message: text }),
-        });
-        const data = await res.json();
-        setChat(data.chat);
-        localStorage.setItem("ba_chat_id", data.chat.id);
-        if (data.order) setOrder(data.order);
-        applyMode(data);
+        try {
+          // Fallback non-stream only if the turn never completed
+          const res = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chatId: chat.id, message: text }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.chat) {
+            throw new Error(
+              data.error ||
+                (streamErr instanceof Error
+                  ? streamErr.message
+                  : "Send failed")
+            );
+          }
+          setChat(data.chat);
+          localStorage.setItem("ba_chat_id", data.chat.id);
+          if (data.order) setOrder(data.order);
+          applyMode(data);
+          setError("");
+        } catch (e) {
+          setError(e instanceof Error ? e.message : "Send failed");
+          setChat(chat);
+        }
       }
       setStreamDraft(null);
     } finally {
@@ -368,6 +403,11 @@ export default function ChatApp() {
             {booting && (
               <div className="text-sm text-ink-700/50">Opening chat…</div>
             )}
+            {error && (
+              <div className="rounded-xl bg-ember/10 px-3 py-2 text-sm text-ember ring-1 ring-ember/25">
+                {error}
+              </div>
+            )}
             {chat?.messages.map((m) => (
               <MessageBubble
                 key={m.id}
@@ -414,7 +454,7 @@ export default function ChatApp() {
               />
               <button
                 type="submit"
-                disabled={booting || sending || !input.trim()}
+                disabled={booting || sending || !chat || !input.trim()}
                 className="rounded-2xl bg-signal px-5 py-3 text-sm font-medium text-ink-950 transition hover:bg-signal-glow disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Send
@@ -429,8 +469,9 @@ export default function ChatApp() {
                 <button
                   key={s}
                   type="button"
+                  disabled={booting || sending || !chat}
                   onClick={() => send(s)}
-                  className="rounded-lg px-2.5 py-1 text-[11px] text-ink-700/55 ring-1 ring-ink-900/10 transition hover:bg-white/70 hover:text-ink-900"
+                  className="rounded-lg px-2.5 py-1 text-[11px] text-ink-700/55 ring-1 ring-ink-900/10 transition hover:bg-white/70 hover:text-ink-900 disabled:opacity-40"
                 >
                   {s}
                 </button>
