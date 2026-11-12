@@ -257,17 +257,10 @@ export default function ChatApp() {
   async function mockPaid(orderId: string) {
     const ord = order?.id === orderId ? order : null;
     const paymentId = ord?.paymentId || `mock_manual_${orderId.slice(0, 6)}`;
-    await fetch("/api/payments/webhook", {
+    await fetch("/api/payments/mock-complete", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-suby-secret": "dev-webhook-secret",
-      },
-      body: JSON.stringify({
-        type: "payment.paid",
-        paymentId,
-        orderId,
-      }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ paymentId, orderId }),
     });
     const refreshed = await fetch(
       `/api/chat?chatId=${localStorage.getItem("ba_chat_id")}`

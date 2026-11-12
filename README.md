@@ -25,7 +25,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Admin: [http://localhost:3000/admin](http://localhost:3000/admin) (key `buyingaccounts-dev`).
+Open [http://localhost:3000](http://localhost:3000). Admin: [http://localhost:3000/admin](http://localhost:3000/admin) — set a strong `ADMIN_KEY` in `.env.local` first.
 
 ### Windows — set OpenAI key
 
@@ -71,9 +71,9 @@ If `hasKey` is false, restart `npm run dev` after editing `.env.local` (must be 
 | `OPENAI_API_KEY` | Enables live LLM seller. Empty → enhanced rules. |
 | `OPENAI_MODEL` | Default `gpt-4o-mini` |
 | `SUBY_API_KEY` / `SUBY_MOCK` | Crypto checkout; mock when empty or `SUBY_MOCK=true` |
-| `SUBY_WEBHOOK_SECRET` | `/api/payments/webhook` auth |
+| `SUBY_WEBHOOK_SECRET` | Required for `/api/payments/webhook` (no default) |
 | `NEXT_PUBLIC_APP_URL` | Checkout link base |
-| `ADMIN_KEY` | Admin gate |
+| `ADMIN_KEY` | Required for admin API/UI (no default) |
 | `TELEGRAM_*` / `ALERT_EMAIL_*` | Optional paid-order alert stubs |
 
 ## Mocked vs real
@@ -82,7 +82,7 @@ If `hasKey` is false, restart `npm run dev` after editing `.env.local` (must be 
 |-------|----------|
 | Bot | **LLM** with tools if key set; else **enhanced rules** |
 | Pricing | **Always** `src/lib/pricing.ts` (LLM cannot invent $) |
-| Suby | Mock `/pay/[id]` + webhook; interface in `src/lib/suby.ts` |
+| Suby | Mock `/pay/[id]` → `/api/payments/mock-complete`; real Suby uses signed `/api/payments/webhook` |
 | Store | JSON `data/store.json` |
 | Alerts / fulfillment | Stub alerts; manual admin |
 

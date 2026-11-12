@@ -13,8 +13,8 @@ import { parseWebhookPayload, verifyWebhookSecret } from "@/lib/suby";
 export const runtime = "nodejs";
 
 /**
- * Suby webhook (and mock pay page) hits this to mark an order paid.
- * Header: x-suby-secret or Authorization: Bearer <SUBY_WEBHOOK_SECRET>
+ * Real Suby webhook endpoint. Always requires SUBY_WEBHOOK_SECRET.
+ * Mock checkout uses /api/payments/mock-complete instead (no shared secret in the browser).
  */
 export async function POST(req: NextRequest) {
   const secret =

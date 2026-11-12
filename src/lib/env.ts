@@ -48,3 +48,13 @@ export function getChatModeStatus(): ChatModeStatus {
     model: hasKey ? getOpenAIModel() : null,
   };
 }
+
+/** Operator admin key — empty means admin routes refuse all requests. */
+export function getAdminKey(): string {
+  return cleanEnv(process.env.ADMIN_KEY);
+}
+
+/** Suby webhook shared secret — empty means webhook routes refuse all requests. */
+export function getSubyWebhookSecret(): string {
+  return cleanEnv(process.env.SUBY_WEBHOOK_SECRET);
+}

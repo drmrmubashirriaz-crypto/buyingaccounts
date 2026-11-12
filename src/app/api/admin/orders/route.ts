@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { markChatDelivered } from "@/lib/bot";
 import { notifyPaidOrder } from "@/lib/alerts";
+import { getAdminKey } from "@/lib/env";
 import {
   getChat,
   getOrder,
@@ -13,7 +14,8 @@ import {
 export const runtime = "nodejs";
 
 function authorized(req: NextRequest): boolean {
-  const key = process.env.ADMIN_KEY || "buyingaccounts-dev";
+  const key = getAdminKey();
+  if (!key) return false;
   const header = req.headers.get("x-admin-key");
   const query = req.nextUrl.searchParams.get("key");
   return header === key || query === key;

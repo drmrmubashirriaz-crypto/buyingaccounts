@@ -16,14 +16,10 @@ export default function MockPayInner() {
     setStatus("paying");
     setError("");
     try {
-      const res = await fetch("/api/payments/webhook", {
+      const res = await fetch("/api/payments/mock-complete", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-suby-secret": "dev-webhook-secret",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: "payment.paid",
           paymentId: params.id,
           orderId,
         }),
@@ -50,8 +46,8 @@ export default function MockPayInner() {
           Pay with crypto
         </h1>
         <p className="mt-2 text-sm text-ink-700/70">
-          This is the v1 mock Suby page. Confirming payment fires the same
-          webhook route a real Suby integration would hit.
+          This is the v1 mock Suby page. Confirming payment marks the order paid
+          through the mock-complete API (not the real webhook secret).
         </p>
         <dl className="mt-6 space-y-2 text-sm text-ink-900">
           <div className="flex justify-between gap-4">

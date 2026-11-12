@@ -2,9 +2,12 @@
  * Suby crypto checkout interface.
  * v1 uses a mock when SUBY_API_KEY is empty or SUBY_MOCK=true.
  * Swap createCheckout / verifyWebhook to the real Suby API later.
+ *
+ * Webhook auth never falls back to a shipped default secret.
  */
 
 import { v4 as uuid } from "uuid";
+import { getSubyWebhookSecret } from "@/lib/env";
 
 export interface SubyCheckoutRequest {
   amountUsd: number;
@@ -37,7 +40,7 @@ function appUrl(): string {
   );
 }
 
-function useMock(): boolean {
+export function useMock(): boolean {
   if (process.env.SUBY_MOCK === "true") return true;
   if (!process.env.SUBY_API_KEY?.trim()) return true;
   return process.env.SUBY_MOCK !== "false";
@@ -97,9 +100,10 @@ export async function createCheckout(
   };
 }
 
+/** Require a configured SUBY_WEBHOOK_SECRET and a matching header. Never accept unsigned posts. */
 export function verifyWebhookSecret(headerValue: string | null): boolean {
-  const secret = process.env.SUBY_WEBHOOK_SECRET || "dev-webhook-secret";
-  if (!headerValue) return useMock();
+  const secret = getSubyWebhookSecret();
+  if (!secret || !headerValue) return false;
   return headerValue === secret || headerValue === `Bearer ${secret}`;
 }
 

@@ -3,16 +3,18 @@
 import { useEffect, useState } from "react";
 import type { AlertLog, Order } from "@/lib/types";
 
-const DEFAULT_KEY = "buyingaccounts-dev";
-
 export default function AdminPage() {
-  const [key, setKey] = useState(DEFAULT_KEY);
+  const [key, setKey] = useState("");
   const [orders, setOrders] = useState<Order[]>([]);
   const [alerts, setAlerts] = useState<AlertLog[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function load(adminKey = key) {
+    if (!adminKey.trim()) {
+      setError("Enter ADMIN_KEY to load orders");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -32,8 +34,10 @@ export default function AdminPage() {
 
   useEffect(() => {
     const saved = localStorage.getItem("ba_admin_key");
-    if (saved) setKey(saved);
-    load(saved || DEFAULT_KEY);
+    if (saved) {
+      setKey(saved);
+      load(saved);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
