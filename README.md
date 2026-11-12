@@ -70,10 +70,13 @@ If `hasKey` is false, restart `npm run dev` after editing `.env.local` (must be 
 |----------|---------|
 | `OPENAI_API_KEY` | Enables live LLM seller. Empty → enhanced rules. |
 | `OPENAI_MODEL` | Default `gpt-4o-mini` |
-| `SUBY_API_KEY` / `SUBY_MOCK` | Crypto checkout; mock when empty or `SUBY_MOCK=true` |
+| `SUBY_API_KEY` / `SUBY_MOCK` | Real Suby when `SUBY_MOCK=false` (publish default). Mock only if `true` or local `NODE_ENV=development` with unset flag. |
 | `SUBY_WEBHOOK_SECRET` | Required for `/api/payments/webhook` (no default) |
 | `NEXT_PUBLIC_APP_URL` | Checkout link base |
-| `ADMIN_KEY` | Required for admin API/UI (no default) |
+| `ADMIN_KEY` | Required for admin API/UI — header `x-admin-key` only |
+| `CHAT_RATE_LIMIT_PER_MIN` | Chat turns / minute / viewer-or-IP (default 20) |
+| `CHAT_MAX_TURNS_PER_DAY` | Chat turns / day (default 200) |
+| `CHAT_MAX_TOKENS_PER_DAY` | Approx token budget / day (default 100000) |
 | `TELEGRAM_*` / `ALERT_EMAIL_*` | Optional paid-order alert stubs |
 
 ## Mocked vs real
@@ -82,7 +85,7 @@ If `hasKey` is false, restart `npm run dev` after editing `.env.local` (must be 
 |-------|----------|
 | Bot | **LLM** with tools if key set; else **enhanced rules** |
 | Pricing | **Always** `src/lib/pricing.ts` (LLM cannot invent $) |
-| Suby | Mock `/pay/[id]` → `/api/payments/mock-complete`; real Suby uses signed `/api/payments/webhook` |
+| Suby | Dev mock `/pay/[id]` → `/api/payments/mock-complete` (dev-only anonymous); production uses signed `/api/payments/webhook` |
 | Store | JSON `data/store.json` |
 | Alerts / fulfillment | Stub alerts; manual admin |
 

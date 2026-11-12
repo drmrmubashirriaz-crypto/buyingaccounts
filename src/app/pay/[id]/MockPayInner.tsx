@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function MockPayInner() {
   const params = useParams<{ id: string }>();
@@ -11,6 +11,14 @@ export default function MockPayInner() {
     "idle"
   );
   const [error, setError] = useState("");
+  const [allowed, setAllowed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch("/api/chat/status")
+      .then((r) => r.json())
+      .then((data) => setAllowed(Boolean(data.allowMockComplete)))
+      .catch(() => setAllowed(false));
+  }, []);
 
   async function pay() {
     setStatus("paying");
@@ -46,9 +54,14 @@ export default function MockPayInner() {
           Pay with crypto
         </h1>
         <p className="mt-2 text-sm text-ink-700/70">
-          This is the v1 mock Suby page. Confirming payment marks the order paid
-          through the mock-complete API (not the real webhook secret).
+          Local-dev mock Suby page. Confirming payment only works in development
+          mock mode (production requires a real Suby webhook).
         </p>
+        {allowed === false && (
+          <p className="mt-3 text-sm text-ember">
+            Mock complete is disabled in this environment.
+          </p>
+        )}
         <dl className="mt-6 space-y-2 text-sm text-ink-900">
           <div className="flex justify-between gap-4">
             <dt className="text-ink-700/50">Payment</dt>
@@ -73,7 +86,7 @@ export default function MockPayInner() {
           <button
             type="button"
             onClick={pay}
-            disabled={status === "paying"}
+            disabled={status === "paying" || allowed !== true}
             className="mt-8 w-full rounded-2xl bg-signal py-3.5 text-sm font-semibold text-ink-950 transition hover:bg-signal-glow disabled:opacity-50"
           >
             {status === "paying" ? "Confirming…" : "Simulate crypto payment"}

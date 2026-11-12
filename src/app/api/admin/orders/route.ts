@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isAdminAuthorized } from "@/lib/admin-auth";
 import { markChatDelivered } from "@/lib/bot";
 import { notifyPaidOrder } from "@/lib/alerts";
-import { getAdminKey } from "@/lib/env";
 import {
   getChat,
   getOrder,
@@ -13,16 +13,8 @@ import {
 
 export const runtime = "nodejs";
 
-function authorized(req: NextRequest): boolean {
-  const key = getAdminKey();
-  if (!key) return false;
-  const header = req.headers.get("x-admin-key");
-  const query = req.nextUrl.searchParams.get("key");
-  return header === key || query === key;
-}
-
 export async function GET(req: NextRequest) {
-  if (!authorized(req)) {
+  if (!isAdminAuthorized(req)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const orders = await listOrders();
@@ -31,7 +23,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  if (!authorized(req)) {
+  if (!isAdminAuthorized(req)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

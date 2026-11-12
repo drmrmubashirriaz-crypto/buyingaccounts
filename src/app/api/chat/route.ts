@@ -5,7 +5,9 @@ import {
   createFreshChat,
   runBotTurn,
 } from "@/lib/bot";
+import { guardChatTurn } from "@/lib/chat-guard";
 import { getChatModeStatus } from "@/lib/env";
+import { allowAnonymousMockComplete } from "@/lib/mock-payments";
 import { createCheckout } from "@/lib/suby";
 import { getChat, getOrder, saveChat, saveOrder } from "@/lib/store";
 import type { Order } from "@/lib/types";
@@ -16,36 +18,25 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const status = getChatModeStatus();
   const chatId = req.nextUrl.searchParams.get("chatId");
+  const extras = {
+    engine: status.mode,
+    mode: status.mode,
+    hasKey: status.hasKey,
+    model: status.model,
+    allowMockComplete: allowAnonymousMockComplete(),
+  };
   if (!chatId) {
     const chat = createFreshChat();
     await saveChat(chat);
-    return NextResponse.json({
-      chat,
-      engine: status.mode,
-      mode: status.mode,
-      hasKey: status.hasKey,
-      model: status.model,
-    });
+    return NextResponse.json({ chat, ...extras });
   }
   const chat = await getChat(chatId);
   if (!chat) {
     const fresh = createFreshChat();
     await saveChat(fresh);
-    return NextResponse.json({
-      chat: fresh,
-      engine: status.mode,
-      mode: status.mode,
-      hasKey: status.hasKey,
-      model: status.model,
-    });
+    return NextResponse.json({ chat: fresh, ...extras });
   }
-  return NextResponse.json({
-    chat,
-    engine: status.mode,
-    mode: status.mode,
-    hasKey: status.hasKey,
-    model: status.model,
-  });
+  return NextResponse.json({ chat, ...extras });
 }
 
 /** Non-streaming turn (kept for scripts/tests). UI prefers /api/chat/stream. */
@@ -55,6 +46,9 @@ export async function POST(req: NextRequest) {
   if (!message) {
     return NextResponse.json({ error: "message required" }, { status: 400 });
   }
+
+  const gated = await guardChatTurn(req, message);
+  if (!gated.ok) return gated.response;
 
   const status = getChatModeStatus();
   let chat = body.chatId ? await getChat(body.chatId) : null;

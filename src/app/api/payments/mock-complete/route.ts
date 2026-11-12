@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isAdminAuthorized } from "@/lib/admin-auth";
 import { notifyPaidOrder } from "@/lib/alerts";
 import { markChatPaid } from "@/lib/bot";
+import {
+  allowAnonymousMockComplete,
+  mockPaymentsEnabled,
+} from "@/lib/mock-payments";
 import {
   getChat,
   getOrder,
@@ -8,17 +13,25 @@ import {
   saveChat,
   saveOrder,
 } from "@/lib/store";
-import { useMock } from "@/lib/suby";
 
 export const runtime = "nodejs";
 
 /**
- * Mock checkout confirmation only. Available when Suby mock mode is on.
- * Does not use or expose SUBY_WEBHOOK_SECRET — real webhooks stay on /webhook.
+ * Mock checkout confirmation.
+ * - Local development + SUBY mock: open (no secret in the browser).
+ * - Any other environment: requires x-admin-key; never anonymous forge-paid.
+ * Real Suby always uses /api/payments/webhook with SUBY_WEBHOOK_SECRET.
  */
 export async function POST(req: NextRequest) {
-  if (!useMock()) {
+  if (!mockPaymentsEnabled()) {
     return NextResponse.json({ error: "mock payments disabled" }, { status: 403 });
+  }
+
+  if (!allowAnonymousMockComplete() && !isAdminAuthorized(req)) {
+    return NextResponse.json(
+      { error: "unauthorized — mock complete requires ADMIN_KEY outside development" },
+      { status: 401 }
+    );
   }
 
   const body = (await req.json()) as {

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { AlertLog, Order } from "@/lib/types";
 
 export default function AdminPage() {
+  // Kept in React state only for this tab session — never localStorage / query.
   const [key, setKey] = useState("");
   const [orders, setOrders] = useState<Order[]>([]);
   const [alerts, setAlerts] = useState<AlertLog[]>([]);
@@ -18,7 +19,7 @@ export default function AdminPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/admin/orders?key=${encodeURIComponent(adminKey)}`, {
+      const res = await fetch("/api/admin/orders", {
         headers: { "x-admin-key": adminKey },
       });
       if (!res.ok) throw new Error("Unauthorized or failed to load");
@@ -31,15 +32,6 @@ export default function AdminPage() {
       setLoading(false);
     }
   }
-
-  useEffect(() => {
-    const saved = localStorage.getItem("ba_admin_key");
-    if (saved) {
-      setKey(saved);
-      load(saved);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   async function setStatus(orderId: string, status: Order["status"]) {
     const res = await fetch("/api/admin/orders", {
@@ -71,16 +63,16 @@ export default function AdminPage() {
             </h1>
             <p className="mt-1 text-sm text-ink-700/65">
               Manual fulfillment inbox. Mark sourcing → delivered after you
-              email credentials.
+              email credentials. Key is sent only as{" "}
+              <code className="text-xs">x-admin-key</code> for this session.
             </p>
           </div>
           <div className="flex gap-2">
             <input
               value={key}
-              onChange={(e) => {
-                setKey(e.target.value);
-                localStorage.setItem("ba_admin_key", e.target.value);
-              }}
+              onChange={(e) => setKey(e.target.value)}
+              type="password"
+              autoComplete="off"
               className="rounded-xl bg-white/70 px-3 py-2 text-sm ring-1 ring-ink-900/10 outline-none"
               placeholder="ADMIN_KEY"
             />

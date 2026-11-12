@@ -5,7 +5,9 @@ import {
   createFreshChat,
   runBotTurn,
 } from "@/lib/bot";
+import { guardChatTurnSse } from "@/lib/chat-guard";
 import { getChatModeStatus } from "@/lib/env";
+import { allowAnonymousMockComplete } from "@/lib/mock-payments";
 import { createCheckout } from "@/lib/suby";
 import { getChat, getOrder, saveChat, saveOrder } from "@/lib/store";
 import type { Order } from "@/lib/types";
@@ -34,6 +36,20 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  const gated = await guardChatTurnSse(req, message);
+  if (!gated.ok) {
+    return new Response(sse("error", gated.body), {
+      status: gated.status,
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache",
+        ...(gated.retryAfterSec
+          ? { "Retry-After": String(gated.retryAfterSec) }
+          : {}),
+      },
+    });
+  }
+
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -53,6 +69,7 @@ export async function POST(req: NextRequest) {
           hasKey: status.hasKey,
           model: status.model,
           engine: status.mode,
+          allowMockComplete: allowAnonymousMockComplete(),
         });
 
         const { chat: next, actions, engine, fallbackReason } =

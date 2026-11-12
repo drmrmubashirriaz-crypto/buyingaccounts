@@ -40,10 +40,14 @@ function appUrl(): string {
   );
 }
 
+/**
+ * Mock checkout only when explicitly enabled, or by default in local development.
+ * Published/production builds never auto-mock (forged paid status is blocked there).
+ */
 export function useMock(): boolean {
   if (process.env.SUBY_MOCK === "true") return true;
-  if (!process.env.SUBY_API_KEY?.trim()) return true;
-  return process.env.SUBY_MOCK !== "false";
+  if (process.env.SUBY_MOCK === "false") return false;
+  return process.env.NODE_ENV === "development";
 }
 
 /** Create a checkout session. Mock returns a local pay page. */

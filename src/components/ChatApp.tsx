@@ -97,6 +97,7 @@ export default function ChatApp() {
     null
   );
   const [hasKey, setHasKey] = useState(false);
+  const [allowMockComplete, setAllowMockComplete] = useState(false);
   const [streamDraft, setStreamDraft] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -105,8 +106,12 @@ export default function ChatApp() {
     engine?: unknown;
     mode?: unknown;
     hasKey?: unknown;
+    allowMockComplete?: unknown;
   }) {
     if (typeof data.hasKey === "boolean") setHasKey(data.hasKey);
+    if (typeof data.allowMockComplete === "boolean") {
+      setAllowMockComplete(data.allowMockComplete);
+    }
     const eng = data.engine ?? data.mode;
     if (eng === "llm" || eng === "rules" || eng === "llm_error") {
       setEngine(eng);
@@ -128,6 +133,7 @@ export default function ChatApp() {
           mode: status.mode,
           hasKey: status.hasKey,
           engine: status.mode,
+          allowMockComplete: status.allowMockComplete,
         });
         setChat(data.chat);
         applyMode(data);
@@ -366,7 +372,7 @@ export default function ChatApp() {
               <MessageBubble
                 key={m.id}
                 message={m}
-                onMockPaid={mockPaid}
+                onMockPaid={allowMockComplete ? mockPaid : undefined}
               />
             ))}
             {streamDraft !== null && (
