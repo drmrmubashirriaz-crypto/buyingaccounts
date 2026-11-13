@@ -40,7 +40,7 @@ export const steamListing: ListingGuide = {
     },
     {
       name: "G2G",
-      url: "https://www.g2g.com/categories/steam-account",
+      url: "https://www.g2g.com/categories/steam-global-account",
       whyListed:
         "Large Steam account category with escrow and region filters.",
       notes:

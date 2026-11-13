@@ -40,7 +40,7 @@ export const netflixListing: ListingGuide = {
     },
     {
       name: "G2G",
-      url: "https://www.g2g.com/categories/netflix-accounts",
+      url: "https://www.g2g.com/categories/nflx-accounts",
       whyListed:
         "Software/accounts category traffic for Netflix-style subscription logins.",
       notes:

@@ -40,7 +40,7 @@ export const fortniteListing: ListingGuide = {
     },
     {
       name: "G2G",
-      url: "https://www.g2g.com/categories/fortnite-account",
+      url: "https://www.g2g.com/categories/fn-account",
       whyListed:
         "High-volume Fortnite account category with escrow and seller levels.",
       notes:
@@ -48,7 +48,7 @@ export const fortniteListing: ListingGuide = {
     },
     {
       name: "EpicNPC",
-      url: "https://www.epicnpc.com/forums/fortnite-accounts.452/",
+      url: "https://www.epicnpc.com/forums/fortnite-accounts.733/",
       whyListed:
         "Forum section dedicated to Fortnite account buy/sell threads.",
       notes:

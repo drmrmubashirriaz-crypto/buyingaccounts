@@ -48,7 +48,7 @@ export const discordListing: ListingGuide = {
     },
     {
       name: "G2G",
-      url: "https://www.g2g.com/categories/discord-accounts",
+      url: "https://www.g2g.com/categories/dc-accounts",
       whyListed:
         "High-volume category for Discord accounts with escrow and seller ratings.",
       notes:
