@@ -7,7 +7,14 @@ import { snapchatListing } from "./snapchat";
 import { steamListing } from "./steam";
 import type { ListingGuide } from "./types";
 
-export type { ListingGuide, ListingSite } from "./types";
+export type {
+  ListingFaq,
+  ListingGuide,
+  ListingGuideExtras,
+  ListingPriceBand,
+  ListingRelatedGuide,
+  ListingSite,
+} from "./types";
 
 /**
  * Registry for data-driven guide roll-out.
