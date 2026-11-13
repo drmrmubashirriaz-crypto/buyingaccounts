@@ -1,6 +1,6 @@
 /**
- * OpenAI seller brain. Prices NEVER come from the model —
- * only from pricing.ts via the get_fixed_quote tool.
+ * OpenAI seller brain. Checkout dollar amounts come from
+ * researchMarketQuote (web market research) — the model must not invent $.
  */
 
 import {
@@ -8,10 +8,7 @@ import {
   getOpenAIModel,
   hasOpenAIKey,
 } from "./env";
-import {
-  knownPlatforms,
-  quoteFixedPrice,
-} from "./pricing";
+import { researchMarketQuote } from "./market-quote";
 import type { ChatSession, QuoteDetails } from "./types";
 
 /** @deprecated use hasOpenAIKey from env — kept for call sites */
@@ -41,16 +38,16 @@ const TOOLS = [
   {
     type: "function",
     function: {
-      name: "get_fixed_quote",
+      name: "research_market_quote",
       description:
-        "Return a deterministic fixed USD price from the store’s pricing rules. Call this when you have platform + enough requirements to quote. NEVER invent or guess a dollar amount yourself — always call this tool for prices.",
+        "Search the live web for current account marketplace prices, then return ONE fixed USD checkout price. Call this whenever platform + enough details exist (or the buyer confirms). NEVER invent or guess a dollar amount yourself. NEVER claim you can’t quote a normal platform like CODM, Fortnite, Discord, Twitter, etc. — research and quote instead.",
       parameters: {
         type: "object",
         properties: {
           platform: {
             type: "string",
             description:
-              "Platform key or label, e.g. twitter, fortnite, instagram",
+              "Platform name, e.g. CODM, Fortnite, Twitter, Discord",
           },
           specs: {
             type: "array",
@@ -64,7 +61,7 @@ const TOOLS = [
           },
           notes: {
             type: "string",
-            description: "Buyer’s raw wording for modifiers",
+            description: "Buyer’s raw wording for search modifiers",
           },
         },
         required: ["platform"],
@@ -124,13 +121,14 @@ Voice rules:
 - 1–3 short sentences usually. Ask at most one clarifying question at a time.
 - Mirror the buyer’s vibe. Use contractions. No bullet essays unless quoting.
 - Never invent inventory or claim you have a specific account in stock — you source after payment.
-- NEVER invent prices, ranges, or “from $X”. Dollar amounts ONLY after get_fixed_quote returns them — then state that exact fixed USD price.
-- Smalltalk (hi/hey/thanks): reply naturally. Do NOT call get_fixed_quote and do NOT repeat an old quote unless they ask to buy again.
-- Platforms you can quote: ${knownPlatforms().join(", ")}.
-- Refuse stolen/hacked/illegal asks politely; suggest a legit alternative.
-- After quoting: ask them to say yes to lock in crypto checkout (Suby). No haggling on the fixed quote — they can change requirements to requote.
+- NEVER invent prices, ranges, or “from $X”. Dollar amounts ONLY after research_market_quote returns them — then state that exact fixed USD price.
+- Prefer quoting over endless clarifying. If platform + quantity/details are clear (e.g. one level 300 CODM account), or the buyer confirms your summary with yes — immediately call research_market_quote.
+- You quote ANY legitimate platform (CODM / Call of Duty Mobile, Fortnite, Discord, Twitter/X, Instagram, Steam, etc.) by researching live market prices. NEVER say “I can’t quote X right now” for a normal platform. NEVER deflect to a different platform unless the buyer asks.
+- Refuse only stolen/hacked/illegal asks politely; suggest a legit alternative.
+- After quoting: briefly mention you checked current market listings, give the fixed USD price, and ask them to say yes to lock crypto checkout (Suby). No haggling on the fixed quote — they can change requirements to requote.
 - After payment: collect delivery email only.
 - While awaiting payment / sourcing / delivered: stay helpful and brief.
+- Smalltalk (hi/hey/thanks): reply naturally. Do NOT call research_market_quote and do NOT repeat an old quote unless they ask to buy again.
 
 Current phase: ${chat.phase}
 Draft so far: ${JSON.stringify(chat.draft)}
@@ -209,7 +207,7 @@ async function chatCompletion(
       stream,
     }),
     // Prevent hung OpenAI calls from freezing the chat Send button forever.
-    signal: AbortSignal.timeout(25_000),
+    signal: AbortSignal.timeout(45_000),
   });
 
   if (!res.ok) {
@@ -233,12 +231,12 @@ async function chatCompletion(
   return { message: choice.message, finish_reason: choice.finish_reason };
 }
 
-function runTool(
+async function runTool(
   chat: ChatSession,
   name: string,
   rawArgs: string,
   state: LlmTurnResult
-): string {
+): Promise<string> {
   let args: Record<string, unknown> = {};
   try {
     args = rawArgs ? (JSON.parse(rawArgs) as Record<string, unknown>) : {};
@@ -257,9 +255,9 @@ function runTool(
     return JSON.stringify({ ok: true, draft: chat.draft });
   }
 
-  if (name === "get_fixed_quote") {
+  if (name === "research_market_quote" || name === "get_fixed_quote") {
     const platform =
-      String(args.platform || chat.draft.platform || "").trim() || "unknown";
+      String(args.platform || chat.draft.platform || "").trim() || "account";
     const specs = Array.isArray(args.specs)
       ? (args.specs as string[])
       : chat.draft.specs;
@@ -271,7 +269,7 @@ function runTool(
 
     applyDraftUpdate(chat, { platform, specs, quantity, notes });
 
-    const priced = quoteFixedPrice({
+    const priced = await researchMarketQuote({
       platform,
       specs,
       quantity,
@@ -312,8 +310,10 @@ function runTool(
       summary: quote.summary,
       specs: quote.specs,
       quantity: quote.quantity,
+      researchProvider: priced.researchProvider,
+      researchBrief: priced.researchBrief,
       instruction:
-        "Tell the buyer this exact fixed price. Do not change the number. Ask them to reply yes to open crypto checkout.",
+        "Tell the buyer this exact fixed price (you researched live market listings). Do not change the number. Ask them to reply yes to open crypto checkout. Never say you can’t quote this platform.",
     });
   }
 
@@ -321,7 +321,7 @@ function runTool(
     if (!chat.quote) {
       return JSON.stringify({
         ok: false,
-        error: "No active quote — call get_fixed_quote first.",
+        error: "No active quote — call research_market_quote first.",
       });
     }
     state.acceptCheckout = true;
@@ -389,7 +389,7 @@ export async function runLlmSellerTurn(
     const calls = message.tool_calls;
     if (calls?.length) {
       for (const call of calls) {
-        const result = runTool(
+        const result = await runTool(
           chat,
           call.function.name,
           call.function.arguments || "{}",
@@ -408,7 +408,6 @@ export async function runLlmSellerTurn(
     if (content) {
       state.reply = content;
       if (onToken) {
-        // Progressive reveal of final text
         await emitProgressive(content, onToken);
       }
       return ensureQuoteMention(state);
@@ -418,7 +417,7 @@ export async function runLlmSellerTurn(
 
   // Fallback: stream a final spoken line if tools ran but no text
   if (state.quote && !state.reply) {
-    state.reply = `Fixed price is $${state.quote.priceUsd} USD for ${state.quote.summary}. Say yes and I’ll open crypto checkout.`;
+    state.reply = `I checked current listings — fixed price is $${state.quote.priceUsd} USD for ${state.quote.summary}. Say yes and I’ll open crypto checkout.`;
   } else if (state.acceptCheckout && !state.reply) {
     state.reply = `Locked in at $${chat.quote?.priceUsd} USD — opening your Suby checkout now.`;
   } else if (state.captureEmail && !state.reply) {
@@ -427,7 +426,7 @@ export async function runLlmSellerTurn(
     state.reply = state.declined.reason;
   } else if (!state.reply) {
     state.reply =
-      "Tell me the platform and any must-haves (year, level, followers) and I’ll get you a fixed price.";
+      "Tell me the platform and any must-haves (year, level, followers) and I’ll research a fixed price.";
   }
 
   if (onToken && state.reply) {
@@ -445,9 +444,13 @@ function ensureQuoteMention(state: LlmTurnResult): LlmTurnResult {
   );
   const wrong = amounts.some((n) => n !== price);
   const missing = amounts.length === 0;
-  if (wrong || missing) {
+  const refused =
+    /can'?t quote|cannot quote|don'?t (have|cover).*pric|another platform/i.test(
+      state.reply
+    );
+  if (wrong || missing || refused) {
     state.reply = [
-      `Alright — fixed price is $${price} USD.`,
+      `I checked current market listings — fixed price is $${price} USD.`,
       `What you get: ${state.quote.summary}.`,
       `Say yes and I’ll open the Suby crypto checkout. Want to tweak anything first?`,
     ].join(" ");

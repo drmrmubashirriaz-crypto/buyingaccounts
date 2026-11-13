@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:codm-quote": "npx --yes tsx scripts/check-codm-quote.ts"
   },
   "dependencies": {
     "next": "^15.1.0",

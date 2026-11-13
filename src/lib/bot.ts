@@ -1,10 +1,10 @@
 import { v4 as uuid } from "uuid";
 import { hasOpenAIKey } from "./env";
 import { runLlmSellerTurn } from "./llm";
+import { researchMarketQuote } from "./market-quote";
 import {
   detectPlatform,
   extractQuantity,
-  quoteFixedPrice,
 } from "./pricing";
 import type {
   BotPhase,
@@ -303,7 +303,7 @@ async function runRulesPath(
     return reply(
       pick([
         "Hey! What account are you looking for?",
-        "Hi — tell me the platform and any must-haves and I’ll get you a fixed price.",
+        "Hi — tell me the platform and any must-haves and I’ll research a fixed price.",
         "Hello! Drop what you need (platform + details) whenever you’re ready.",
       ])
     );
@@ -314,7 +314,7 @@ async function runRulesPath(
       chat.phase = "qualifying";
       chat.quote = undefined;
       return reply(
-        "All good. What should we change — platform, year, stats, or quantity? I’ll requote."
+        "All good. What should we change — platform, year, stats, or quantity? I’ll research a new price."
       );
     }
     if (looksLikeAccept(text)) {
@@ -337,12 +337,23 @@ async function runRulesPath(
     mergeDraft(chat, text);
   }
 
-  if (!chat.draft.platform) {
+  // Buyer confirms a draft (e.g. "yes" after "one level 300 CODM") → research + quote
+  if (
+    looksLikeAccept(text) &&
+    chat.phase !== "quoted" &&
+    chat.draft.platform &&
+    (chat.draft.specs.length > 0 ||
+      /level|account|codm|fortnite|twitter|discord/i.test(
+        chat.draft.notes || ""
+      ))
+  ) {
+    // fall through to researchMarketQuote below
+  } else if (!chat.draft.platform) {
     chat.phase = "qualifying";
     return reply(
       pick([
-        "Which platform are we talking — Twitter/X, Instagram, TikTok, Steam, Fortnite, Discord…? Any year or stats I should know?",
-        "Got it. What’s the platform? Throw in age, level, followers, whatever matters and I’ll lock a fixed price.",
+        "Which platform — CODM, Fortnite, Twitter/X, Discord, Steam…? Any level, year, or stats I should know?",
+        "Got it. What’s the platform? Throw in age, level, followers, whatever matters and I’ll research a fixed price.",
         "Sure — name the platform first and I’ll take it from there.",
       ])
     );
@@ -350,20 +361,29 @@ async function runRulesPath(
 
   const thin =
     chat.draft.specs.length === 0 &&
-    !/(account|need|want|looking|buy|\d{4}|level|cp|follower)/i.test(text);
+    !/(account|need|want|looking|buy|\d{4}|level|cp|follower|yes|confirm)/i.test(
+      text
+    );
 
   if (thin && chat.phase !== "quoted") {
     chat.phase = "qualifying";
     const label = chat.draft.platform;
     return reply(
       pick([
-        `Okay, ${label}. Anything must-have — creation year, followers, level, verified? Even one detail is enough to quote.`,
-        `${label}, noted. Want a specific year or stats, or should I quote a standard ${label} account?`,
+        `Okay, ${label}. Anything must-have — creation year, followers, level, verified? Even one detail and I’ll research the market and quote.`,
+        `${label}, noted. Want a specific year or stats, or should I research a standard ${label} account price now?`,
       ])
     );
   }
 
-  const priced = quoteFixedPrice({
+  if (!chat.draft.platform) {
+    chat.phase = "qualifying";
+    return reply(
+      "Name the platform (CODM, Fortnite, Twitter…) and I’ll research a fixed price."
+    );
+  }
+
+  const priced = await researchMarketQuote({
     platform: chat.draft.platform,
     specs: chat.draft.specs,
     quantity: chat.draft.quantity,
@@ -374,7 +394,7 @@ async function runRulesPath(
     chat.phase = "qualifying";
     return reply(
       priced.declineReason ||
-        "I can’t quote that one — try a different platform or rephrase."
+        "I can’t help with that request — try a legitimate account type and I’ll research a price."
     );
   }
 
@@ -389,10 +409,14 @@ async function runRulesPath(
   chat.phase = "quoted";
   chat.draft.specs = priced.specs;
 
+  const researchBit = priced.researchBrief
+    ? ` ${priced.researchBrief}`
+    : " Checked current public listings.";
+
   const body = pick([
-    `Alright — fixed price is $${quote.priceUsd} USD.\n\nWhat you get: ${quote.summary}.\n\nSay yes and I’ll open Suby crypto checkout. Want to tweak anything first?`,
-    `I can do that for $${quote.priceUsd} USD fixed — ${quote.summary}.\n\nReply yes to pay, or tell me what to change.`,
-    `Fixed quote: $${quote.priceUsd} USD for ${quote.summary}. No haggling on this number — yes locks checkout, or change the specs and I’ll requote.`,
+    `Alright — researched the market.${researchBit}\n\nFixed price is $${quote.priceUsd} USD.\n\nWhat you get: ${quote.summary}.\n\nSay yes and I’ll open Suby crypto checkout. Want to tweak anything first?`,
+    `I pulled current marketplace signals — $${quote.priceUsd} USD fixed for ${quote.summary}.\n\nReply yes to pay, or tell me what to change.`,
+    `Market-based fixed quote: $${quote.priceUsd} USD for ${quote.summary}. Yes locks Suby checkout, or change the specs and I’ll research again.`,
   ]);
 
   return reply(body, { kind: "quote", priceUsd: quote.priceUsd });

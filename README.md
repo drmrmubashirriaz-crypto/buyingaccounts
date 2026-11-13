@@ -1,6 +1,6 @@
 # BuyingAccounts — chat marketplace (v2.1)
 
-Chat-first web app for **buyingaccounts.com**. Buyers talk to a human-feeling seller bot, get a **fixed** crypto quote from pricing rules (the LLM never invents prices), pay via Suby, then leave a delivery email for manual fulfillment.
+Chat-first web app for **buyingaccounts.com**. Buyers talk to a human-feeling seller bot, get a **fixed** crypto quote from **live web market research** (the LLM never invents dollar amounts), pay via Suby, then leave a delivery email for manual fulfillment.
 
 ## What’s new in v2.1
 
@@ -11,10 +11,10 @@ Chat-first web app for **buyingaccounts.com**. Buyers talk to a human-feeling se
 
 ### v2
 
-- OpenAI seller brain + tool calls into `pricing.ts`
+- OpenAI seller brain + `research_market_quote` (web market search → fixed USD)
 - Streaming UX via `/api/chat/stream`
-- Enhanced rules when no API key
-- Deterministic prices only via `get_fixed_quote`
+- Enhanced rules when no API key (heuristic fallback if search unavailable)
+- Quotes any legit platform (incl. CODM) — never “can’t quote X” for catalog gaps
 
 ## Run locally
 
@@ -59,7 +59,7 @@ If `hasKey` is false, restart `npm run dev` after editing `.env.local` (must be 
 
 1. Land on `/` — chat is the product.
 2. Talk naturally (e.g. “looking for an old Twitter, like 2009”).
-3. Bot clarifies if needed, then quotes a **fixed USD** price from rules.
+3. Bot clarifies if needed, researches public marketplace prices, then quotes a **fixed USD** checkout amount.
 4. Say yes → mock Suby link in chat (progressive reply).
 5. Pay (or **Mock: mark paid**) → enter delivery email → **sourcing**.
 6. `/admin` → mark **delivered**.
@@ -68,8 +68,10 @@ If `hasKey` is false, restart `npm run dev` after editing `.env.local` (must be 
 
 | Variable | Purpose |
 |----------|---------|
-| `OPENAI_API_KEY` | Enables live LLM seller. Empty → enhanced rules. |
+| `OPENAI_API_KEY` | Enables live LLM seller + OpenAI web-search quotes. Empty → enhanced rules. |
 | `OPENAI_MODEL` | Default `gpt-4o-mini` |
+| `OPENAI_SEARCH_MODEL` | Optional Chat Completions search fallback (e.g. `gpt-4o-mini-search-preview`) |
+| `SERPER_API_KEY` / `BRAVE_API_KEY` / `TAVILY_API_KEY` | Optional dedicated web search (first set wins) |
 | `SUBY_API_KEY` / `SUBY_MOCK` | Real Suby when `SUBY_MOCK=false` (publish default). Mock only if `true` or local `NODE_ENV=development` with unset flag. |
 | `SUBY_WEBHOOK_SECRET` | Required for `/api/payments/webhook` (no default) |
 | `NEXT_PUBLIC_APP_URL` | Checkout link base |
@@ -84,7 +86,7 @@ If `hasKey` is false, restart `npm run dev` after editing `.env.local` (must be 
 | Piece | Behavior |
 |-------|----------|
 | Bot | **LLM** with tools if key set; else **enhanced rules** |
-| Pricing | **Always** `src/lib/pricing.ts` (LLM cannot invent $) |
+| Pricing | **Web market research** via `researchMarketQuote` (LLM cannot invent $); soft heuristic only if search fails |
 | Suby | Dev mock `/pay/[id]` → `/api/payments/mock-complete` (dev-only anonymous); production uses signed `/api/payments/webhook` |
 | Store | JSON `data/store.json` |
 | Alerts / fulfillment | Stub alerts; manual admin |
