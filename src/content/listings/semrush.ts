@@ -3,68 +3,63 @@ import type { ListingGuide } from "./types";
 /**
  * Editorial Semrush guide — not paid placement.
  * Future products: add sibling modules and register in index.ts.
+ *
+ * `url` should be a Semrush seller/category page when one exists publicly —
+ * not a marketplace homepage.
  */
 export const semrushListing: ListingGuide = {
   slug: "best-sites-to-buy-semrush-accounts",
   product: "Semrush",
   title: "Best Sites to Buy Semrush Accounts (2026) | BuyingAccounts",
   metaDescription:
-    "Editorial comparison of marketplaces people use for Semrush-type account deals — AccsMarket, SEOClerks, PlayerAuctions, and more. Or get a fixed crypto quote in BuyingAccounts chat.",
+    "Editorial comparison of Semrush account seller pages — Z2U, Plati.market, GGSel, PlayerUp, SEOClerks. Or get a fixed crypto quote in BuyingAccounts chat.",
   h1: "Best sites to buy Semrush accounts",
   intro: [
     "Looking for a Semrush login without a full retail subscription? Buyers usually compare a handful of public marketplaces and freelance boards that list SaaS / SEO tool access.",
-    "This page is an editorial shortlist of places that commonly show up for Semrush-type listings. Order is not paid advertising — it reflects how often these names appear in public buying discussions and how usable their buyer protections look from the outside.",
+    "This page is an editorial shortlist of places that commonly show up for Semrush-type listings. Each row links into that site’s Semrush seller or category page (not the homepage). Order is not paid advertising.",
   ],
   disclaimer:
     "Buying shared or third-party Semrush access can violate Semrush’s terms and risks account bans or credential reuse. Rankings here are editorial opinions, not endorsements or affiliate placements. Do your own due diligence.",
   sites: [
     {
-      name: "AccsMarket",
-      url: "https://accsmarket.com",
+      name: "Z2U",
+      url: "https://www.z2u.com/semrush/accounts-5-18593",
       whyListed:
-        "Long-running account marketplace; Semrush and other SEO tools appear in SaaS sections regularly.",
+        "Dedicated Semrush Accounts category with Pro / Guru / Business offers and seller ratings.",
       notes:
-        "Site-wide buyer guarantees vary by seller. Check recent Semrush feedback and delivery method before paying.",
+        "Escrow-style checkout. Confirm warranty length and whether access is private vs panel/shared before paying.",
+    },
+    {
+      name: "Plati.market",
+      url: "https://plati.market/games/semrush/1614/",
+      whyListed:
+        "Semrush catalog page with many live Guru/Pro seller listings and auto-delivery options.",
+      notes:
+        "Secure-deal flow is common. Read whether login is official Semrush or a third-party panel.",
+    },
+    {
+      name: "GGSel",
+      url: "https://ggsel.net/en/catalog/product/semrush-one-starter-pack-personalnyi-akkaunt-dostup-na-14-dnei-103518031",
+      whyListed:
+        "Active Semrush private-account product pages (Guru / Pro packs) with escrow-held payments.",
+      notes:
+        "Funds reserved until delivery. Check warranty window and seller chat before checkout.",
+    },
+    {
+      name: "PlayerUp",
+      url: "https://www.playerup.com/search/?q=Semrush+account",
+      whyListed:
+        "Has a Semrush Accounts buy/sell forum; deals are posted as individual seller threads.",
+      notes:
+        "Middleman available on many threads. Prefer verified sellers — inventory turns over quickly.",
     },
     {
       name: "SEOClerks",
-      url: "https://www.seoclerks.com",
+      url: "https://www.seoclerks.com/tags/SEO-Reports/Semrush",
       whyListed:
-        "Freelance SEO marketplace where sellers often post Semrush / Ahrefs-style access and research gigs.",
+        "Semrush-tagged gigs: reports, research, and occasional group-buy / shared tool access.",
       notes:
-        "Order protection and dispute flow are stronger than pure P2P chats. Quality and longevity still depend on the seller.",
-    },
-    {
-      name: "PlayerAuctions",
-      url: "https://www.playerauctions.com",
-      whyListed:
-        "Large escrow-style marketplace; digital goods and some SaaS/account categories show up alongside games.",
-      notes:
-        "Middleman / escrow is the main draw. Confirm the listing is actual Semrush access and read seller history.",
-    },
-    {
-      name: "Eldorado.gg",
-      url: "https://www.eldorado.gg",
-      whyListed:
-        "Popular digital marketplace with seller ratings; buyers sometimes find SEO-tool accounts in adjacent categories.",
-      notes:
-        "Buyer protection and chat tooling are mature. Inventory for Semrush specifically can be thin or intermittent.",
-    },
-    {
-      name: "Z2U",
-      url: "https://www.z2u.com",
-      whyListed:
-        "High-volume account and top-up marketplace; SaaS and “software account” listings appear alongside games.",
-      notes:
-        "Fast checkout culture — verify warranty length and whether access is shared/group or dedicated.",
-    },
-    {
-      name: "EpicNPC",
-      url: "https://www.epicnpc.com",
-      whyListed:
-        "Forum-style trading community where account deals (including tools) are negotiated thread-by-thread.",
-      notes:
-        "Reputation threads help, but escrow is optional / middleman-dependent. Higher scam surface than escrow markets.",
+        "Order protection is stronger than pure P2P. Filter for account access vs one-off reports.",
     },
   ],
   cta: {
