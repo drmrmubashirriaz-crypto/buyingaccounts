@@ -31,6 +31,8 @@ export interface QuoteDetails {
 export interface Order {
   id: string;
   chatId: string;
+  /** Cursor identity.sub of the buyer who owns this order */
+  ownerSub: string;
   status: OrderStatus;
   quote: QuoteDetails;
   paymentId?: string;
@@ -55,6 +57,8 @@ export type BotPhase =
 
 export interface ChatSession {
   id: string;
+  /** Cursor identity.sub of the viewer who owns this chat */
+  ownerSub: string;
   messages: ChatMessage[];
   phase: BotPhase;
   draft: {

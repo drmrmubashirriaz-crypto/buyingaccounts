@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createCheckout } from "@/lib/suby";
+import { requireViewer } from "@/lib/viewer-auth";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 /** Low-level checkout create — normally the chat bot calls this via /api/chat. */
 export async function POST(req: NextRequest) {
+  const viewer = await requireViewer(req);
+  if (viewer instanceof NextResponse) return viewer;
+
   const body = (await req.json()) as {
     amountUsd?: number;
     orderId?: string;
@@ -24,5 +29,8 @@ export async function POST(req: NextRequest) {
     description: body.description || `Order ${body.orderId}`,
   });
 
-  return NextResponse.json({ checkout });
+  return NextResponse.json(
+    { checkout },
+    { headers: { "Cache-Control": "private, no-store" } }
+  );
 }

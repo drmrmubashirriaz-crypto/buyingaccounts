@@ -11,6 +11,7 @@ import { allowAnonymousMockComplete } from "@/lib/mock-payments";
 import { createCheckout } from "@/lib/suby";
 import { getChat, getOrder, saveChat, saveOrder } from "@/lib/store";
 import type { Order } from "@/lib/types";
+import { ownsChat } from "@/lib/viewer-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
       status: 400,
       headers: {
         "Content-Type": "text/event-stream; charset=utf-8",
-        "Cache-Control": "no-cache",
+        "Cache-Control": "private, no-store",
       },
     });
   }
@@ -42,7 +43,7 @@ export async function POST(req: NextRequest) {
       status: gated.status,
       headers: {
         "Content-Type": "text/event-stream; charset=utf-8",
-        "Cache-Control": "no-cache",
+        "Cache-Control": "private, no-store",
         ...(gated.retryAfterSec
           ? { "Retry-After": String(gated.retryAfterSec) }
           : {}),
@@ -60,9 +61,10 @@ export async function POST(req: NextRequest) {
       try {
         const status = getChatModeStatus();
         let chat = body.chatId ? await getChat(body.chatId) : null;
-        if (!chat) chat = createFreshChat();
+        if (!ownsChat(chat, gated.ownerSub)) {
+          chat = createFreshChat(gated.ownerSub);
+        }
 
-        // Intended mode from env (badge truth before the turn)
         send("meta", {
           chatId: chat.id,
           mode: status.mode,
@@ -76,6 +78,7 @@ export async function POST(req: NextRequest) {
           await runBotTurn(chat, message, (token) =>
             send("token", { token })
           );
+        next.ownerSub = gated.ownerSub;
 
         if (fallbackReason) {
           console.info("[chat/stream] llm_error:", fallbackReason);
@@ -93,6 +96,7 @@ export async function POST(req: NextRequest) {
           const order: Order = {
             id: orderId,
             chatId: next.id,
+            ownerSub: gated.ownerSub,
             status: "awaiting_payment",
             quote,
             paymentId: checkout.id,
@@ -112,7 +116,7 @@ export async function POST(req: NextRequest) {
 
         if (actions.captureEmail && next.orderId) {
           const order = await getOrder(next.orderId);
-          if (order) {
+          if (order && order.ownerSub === gated.ownerSub) {
             order.buyerEmail = actions.captureEmail;
             order.status = "sourcing";
             order.updatedAt = new Date().toISOString();
@@ -121,7 +125,9 @@ export async function POST(req: NextRequest) {
         }
 
         await saveChat(next);
-        const order = next.orderId ? await getOrder(next.orderId) : null;
+        const orderRaw = next.orderId ? await getOrder(next.orderId) : null;
+        const order =
+          orderRaw && orderRaw.ownerSub === gated.ownerSub ? orderRaw : null;
         send("done", {
           chat: next,
           order,
@@ -145,7 +151,7 @@ export async function POST(req: NextRequest) {
   return new Response(stream, {
     headers: {
       "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
+      "Cache-Control": "private, no-store, no-transform",
       Connection: "keep-alive",
     },
   });

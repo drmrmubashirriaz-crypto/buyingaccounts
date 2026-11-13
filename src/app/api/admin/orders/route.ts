@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isAdminAuthorized } from "@/lib/admin-auth";
+import { requireAdmin } from "@/lib/admin-auth";
 import { markChatDelivered } from "@/lib/bot";
 import { notifyPaidOrder } from "@/lib/alerts";
 import {
@@ -12,20 +12,23 @@ import {
 } from "@/lib/store";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  if (!isAdminAuthorized(req)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const admin = await requireAdmin(req);
+  if (admin instanceof NextResponse) return admin;
+
   const orders = await listOrders();
   const alerts = await listAlerts();
-  return NextResponse.json({ orders, alerts });
+  return NextResponse.json(
+    { orders, alerts },
+    { headers: { "Cache-Control": "private, no-store" } }
+  );
 }
 
 export async function PATCH(req: NextRequest) {
-  if (!isAdminAuthorized(req)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const admin = await requireAdmin(req);
+  if (admin instanceof NextResponse) return admin;
 
   const body = (await req.json()) as {
     orderId?: string;
@@ -68,5 +71,8 @@ export async function PATCH(req: NextRequest) {
     await notifyPaidOrder(order);
   }
 
-  return NextResponse.json({ order });
+  return NextResponse.json(
+    { order },
+    { headers: { "Cache-Control": "private, no-store" } }
+  );
 }
