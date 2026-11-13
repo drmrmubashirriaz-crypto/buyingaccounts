@@ -5,9 +5,11 @@ import {
   createFreshChat,
   runBotTurn,
 } from "@/lib/bot";
+import { guardCheckoutCreate } from "@/lib/checkout-guard";
 import { guardChatTurn } from "@/lib/chat-guard";
 import { getChatModeStatus } from "@/lib/env";
 import { allowAnonymousMockComplete } from "@/lib/mock-payments";
+import { applyPaidEmailCapture } from "@/lib/order-fulfillment";
 import { createCheckout } from "@/lib/suby";
 import { getChat, getOrder, saveChat, saveOrder } from "@/lib/store";
 import type { Order } from "@/lib/types";
@@ -80,10 +82,13 @@ export async function POST(req: NextRequest) {
     next.ownerSub = gated.ownerSub;
 
     if (actions.createCheckout) {
-      const orderId = uuid();
       const quote = actions.createCheckout;
+      const spend = guardCheckoutCreate(gated.ownerSub, quote.priceUsd);
+      if (!spend.ok) return spend.response;
+
+      const orderId = uuid();
       const checkout = await createCheckout({
-        amountUsd: quote.priceUsd,
+        amountUsd: spend.amountUsd,
         orderId,
         description: quote.summary,
       });
@@ -111,11 +116,20 @@ export async function POST(req: NextRequest) {
 
     if (actions.captureEmail && next.orderId) {
       const order = await getOrder(next.orderId);
-      if (order && order.ownerSub === gated.ownerSub) {
-        order.buyerEmail = actions.captureEmail;
-        order.status = "sourcing";
-        order.updatedAt = new Date().toISOString();
-        await saveOrder(order);
+      if (order) {
+        const applied = applyPaidEmailCapture(
+          order,
+          gated.ownerSub,
+          actions.captureEmail,
+          next
+        );
+        if (applied) {
+          await saveOrder(applied.order);
+          Object.assign(next, applied.chat);
+        } else {
+          // Unpaid or not owned — never move to sourcing
+          if (next.phase === "sourcing") next.phase = "awaiting_email";
+        }
       }
     }
 

@@ -489,13 +489,22 @@ async function runTool(
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return JSON.stringify({ ok: false, error: "Invalid email" });
     }
+    // Only after payment confirmed (chat moved to awaiting_email).
+    // Server still re-checks order.status === "paid" before sourcing.
+    if (chat.phase !== "awaiting_email") {
+      return JSON.stringify({
+        ok: false,
+        error:
+          "Payment not confirmed yet. Ask them to finish Suby checkout first; only then collect delivery email.",
+      });
+    }
     state.captureEmail = email;
-    chat.phase = "sourcing";
     return JSON.stringify({
       ok: true,
       email,
-      status: "sourcing",
-      message: "Confirm email saved; operator will source and deliver.",
+      pendingApply: true,
+      message:
+        "Email will be saved only if payment is confirmed. Tell them you’ll source after it’s on file.",
     });
   }
 
