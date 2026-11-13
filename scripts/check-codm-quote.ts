@@ -12,7 +12,11 @@ import {
   looksLikePricingRefusal,
 } from "../src/lib/llm";
 import { researchMarketQuote } from "../src/lib/market-quote";
-import { detectPlatform, heuristicMarketQuote } from "../src/lib/pricing";
+import {
+  detectPlatform,
+  extractQuantity,
+  heuristicMarketQuote,
+} from "../src/lib/pricing";
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) throw new Error(msg);
@@ -49,7 +53,7 @@ async function main() {
     rawText: "gmail account",
   });
   assert(!gmailH.declined, "heuristic must not decline Gmail");
-  assert(gmailH.priceUsd >= 15, "gmail heuristic price");
+  assert(gmailH.priceUsd >= 10, "gmail heuristic price");
   console.log("heuristic Gmail quote: $%d — %s", gmailH.priceUsd, gmailH.summary);
 
   const hacked = heuristicMarketQuote({
@@ -65,8 +69,25 @@ async function main() {
     quantity: 1,
     rawText: "netflix account",
   });
-  assert(!netflix.declined && netflix.priceUsd >= 15, "quote unknown platforms");
+  assert(!netflix.declined && netflix.priceUsd >= 10, "quote unknown platforms");
   console.log("heuristic Netflix quote: $%d — %s", netflix.priceUsd, netflix.summary);
+
+  // User complaint: 10 PVA Gmail should NOT be $250 ($25×10)
+  assert(extractQuantity("10 fresh PVA Gmail accounts") === 10, "qty 10 PVA gmail");
+  const pva10 = heuristicMarketQuote({
+    platform: "gmail",
+    specs: ["PVA", "Fresh"],
+    quantity: 10,
+    rawText: "10 fresh PVA Gmail accounts",
+  });
+  assert(!pva10.declined, "PVA gmail quoted");
+  assert(pva10.priceUsd < 120, `PVA bulk must be market-ish, got $${pva10.priceUsd}`);
+  assert(pva10.priceUsd >= 12, "PVA bulk floor");
+  console.log(
+    "heuristic 10× PVA Gmail: $%d — %s",
+    pva10.priceUsd,
+    pva10.summary
+  );
 
   // Unit: CODM is detected and never hard-refused by heuristic
   assert(detectPlatform("one level 300 CODM account") === "codm", "detect CODM");
