@@ -54,13 +54,15 @@ export function buildAccountPriceQuery(input: {
   quantity?: number;
   notes?: string;
 }): string {
+  const qty = input.quantity && input.quantity > 1 ? `${input.quantity} bulk` : "";
   const bits = [
     `buy ${input.platform} account`,
+    qty,
     ...(input.specs || []).slice(0, 4),
-    input.notes ? String(input.notes).slice(0, 80) : "",
-    "price USD",
+    input.notes ? String(input.notes).slice(0, 100) : "",
+    "price USD per account",
     "marketplace",
-    "G2G OR Eldorado OR PlayerUp OR AccsMarket",
+    "G2G OR Eldorado OR AccsMarket OR PlayerUp OR SEOClerks",
   ].filter(Boolean);
   return bits.join(" ").replace(/\s+/g, " ").trim();
 }

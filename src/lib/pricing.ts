@@ -164,14 +164,65 @@ export function extractQuantity(text: string): number {
   );
   if (mult) {
     const n = Number(mult[1] || mult[2] || mult[3]);
-    return Math.min(20, Math.max(1, n));
+    return Math.min(50, Math.max(1, n));
   }
-  const m = text.match(/\b(\d{1,2})\s*(accounts?|pcs?)\b/i);
+  // "10 fresh PVA Gmail accounts" / "10 accounts"
+  const m = text.match(
+    /\b(\d{1,2})\s+(?:[\w.+-]+\s+){0,6}(?:accounts?|pcs?|pcs)\b/i
+  );
   if (m) {
     const n = Number(m[1]);
-    if (n >= 1 && n <= 20) return n;
+    if (n >= 1 && n <= 50) return n;
+  }
+  const m2 = text.match(/\b(\d{1,2})\s*(accounts?|pcs?)\b/i);
+  if (m2) {
+    const n = Number(m2[1]);
+    if (n >= 1 && n <= 50) return n;
   }
   return 1;
+}
+
+/** Bulk volume discount vs single-unit retail. */
+export function bulkDiscountFactor(quantity: number): number {
+  const q = Math.max(1, quantity);
+  if (q >= 50) return 0.4;
+  if (q >= 20) return 0.5;
+  if (q >= 10) return 0.58;
+  if (q >= 5) return 0.72;
+  if (q >= 3) return 0.85;
+  return 1;
+}
+
+/**
+ * Market-ish single-unit retail for fallback when web search is unavailable.
+ * Tuned so PVA/email bulk is not absurdly high (e.g. not $25/ea Gmail).
+ */
+export function heuristicUnitUsd(
+  platform: string,
+  blob: string,
+  key?: string
+): number {
+  const pva = /\bpva\b|phone.?verified|sms.?verified/i.test(blob);
+  const fresh = /\bfresh\b|new\b|aged\s*0/i.test(blob);
+  const k = key || resolvePlatformKey(platform) || "";
+
+  if (k === "gmail" || k === "google" || /gmail|google/i.test(platform)) {
+    if (pva) return fresh ? 2.5 : 3.5;
+    return 6;
+  }
+  if (k === "outlook" || /outlook|hotmail/i.test(platform)) {
+    return pva ? 3 : 5;
+  }
+  if (k === "twitter" || k === "x") return pva ? 8 : 12;
+  if (k === "instagram" || k === "ig") return pva ? 7 : 10;
+  if (k === "discord") return 5;
+  if (k === "tiktok") return 12;
+  if (k === "fortnite") return 25;
+  if (k === "codm") return 18;
+  if (k === "steam") return 15;
+  if (k === "netflix" || /netflix/i.test(platform)) return 8;
+  // Generic account
+  return pva ? 5 : 12;
 }
 
 function rarityMultiplier(text: string, platform: string): number {
@@ -276,21 +327,32 @@ export function heuristicMarketQuote(
   }
 
   const key = resolvePlatformKey(input.platform);
-  const hint = key ? PLATFORM_HINT[key] : undefined;
-  const base = hint?.base ?? 60; // generic gaming / social fallback
   const label = prettyLabel(input.platform, key);
-  const qty = Math.min(20, Math.max(1, input.quantity || 1));
+  const qty = Math.min(50, Math.max(1, input.quantity || 1));
+  const unitBase = heuristicUnitUsd(input.platform, blob, key);
   const mult = rarityMultiplier(blob, key || "gaming");
-  const unit = Math.round(base * mult);
-  const priceUsd = Math.max(15, unit * qty);
+  // Soften rarity for cheap PVA/email so we don't explode bulk totals
+  const rarity =
+    key === "gmail" || key === "google" || /pva/i.test(blob)
+      ? 1 + (mult - 1) * 0.25
+      : mult;
+  const unit = unitBase * rarity;
+  const raw = unit * qty * bulkDiscountFactor(qty);
+  const priceUsd =
+    qty >= 10
+      ? Math.max(12, Math.round(raw))
+      : Math.max(10, Math.round(raw / 5) * 5);
   const specs =
     input.specs.length > 0 ? input.specs : collectSpecs(blob);
+  if (/pva|phone.?verified/i.test(blob) && !specs.some((s) => /pva/i.test(s))) {
+    specs.unshift("PVA");
+  }
 
   return {
-    priceUsd,
+    priceUsd: Math.min(8000, priceUsd),
     platform: label,
-    summary: `${qty > 1 ? `${qty}× ` : ""}${label} account — ${specs.join(", ")}`,
-    specs,
+    summary: `${qty > 1 ? `${qty}× ` : ""}${label} account — ${specs.slice(0, 6).join(", ")}`,
+    specs: specs.slice(0, 6),
     quantity: qty,
   };
 }

@@ -82,6 +82,12 @@ function mergeDraft(chat: ChatSession, text: string): void {
   else if (/account/i.test(text) && !chat.draft.quantity) {
     chat.draft.quantity = 1;
   }
+  if (/\bpva\b|phone.?verified/i.test(text)) {
+    chat.draft.specs = [...new Set([...chat.draft.specs, "PVA"])];
+  }
+  if (/\bfresh\b/i.test(text)) {
+    chat.draft.specs = [...new Set([...chat.draft.specs, "Fresh"])];
+  }
 
   const extras: string[] = [];
   const year = text.match(/\b(19|20)\d{2}\b/);
