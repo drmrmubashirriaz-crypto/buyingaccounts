@@ -72,16 +72,8 @@ const PLATFORM_ALIASES: Record<string, string> = {
   "gaming account": "gaming",
 };
 
-const REFUSED = [
-  /bank/i,
-  /paypal.*verified.*stolen/i,
-  /hack(ed|ing)?\b/i,
-  /stolen/i,
-  /crack(ed)?\b/i,
-  /phishing/i,
-  /ssn|passport|id card/i,
-  /underage|child|minor/i,
-];
+/** Only hard-block underage requests. Every other account type gets a quote. */
+const REFUSED = [/underage|child\s*account|\bminors?\b/i];
 
 export function resolvePlatformKey(platform: string): string | undefined {
   const raw = platform.toLowerCase().trim();
@@ -93,24 +85,64 @@ export function resolvePlatformKey(platform: string): string | undefined {
   if (PLATFORM_HINT[compact]) return compact;
   const compactAlias = PLATFORM_ALIASES[compact];
   if (compactAlias && PLATFORM_HINT[compactAlias]) return compactAlias;
+  // Exact / token match only — do not treat "x" inside "netflix" as Twitter
   const keys = Object.keys(PLATFORM_HINT).sort((a, b) => b.length - a.length);
   for (const key of keys) {
-    if (compact.includes(key) || raw.includes(key)) return key;
+    if (includesPlatformToken(compact, key) || includesPlatformToken(raw, key)) {
+      return key;
+    }
   }
   for (const [alias, key] of Object.entries(PLATFORM_ALIASES)) {
-    if (compact.includes(alias) || raw.includes(alias)) return key;
+    if (
+      includesPlatformToken(compact, alias) ||
+      includesPlatformToken(raw, alias)
+    ) {
+      return key;
+    }
   }
   return undefined;
+}
+
+/** Free-form “Netflix account” / “need Spotify” → platform label. */
+export function extractFreeformPlatform(text: string): string | undefined {
+  const m = text.match(
+    /\b(?:buy|need|want|looking for|get|quote|for)?\s*([a-z0-9][a-z0-9+._\-]{1,32})\s+accounts?\b/i
+  );
+  if (m?.[1]) {
+    const raw = m[1].toLowerCase();
+    if (!/^(an|a|the|my|one|some|any|new|old|good|best)$/.test(raw)) {
+      return raw;
+    }
+  }
+  const m2 = text.match(
+    /\b(?:buy|need|want|looking for)\s+(?:a|an|some)?\s*([a-z0-9][a-z0-9+._\-]{1,32})\b/i
+  );
+  if (m2?.[1] && !/^(account|accounts|price|quote|one)$/i.test(m2[1])) {
+    return m2[1].toLowerCase();
+  }
+  return undefined;
+}
+
+function includesPlatformToken(haystack: string, token: string): boolean {
+  const t = token.toLowerCase();
+  // Short tokens (x, ig, fb, lol) must be whole words — avoid "x" in "netflix"
+  if (t.length <= 3) {
+    return new RegExp(
+      `(^|[^a-z0-9])${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`,
+      "i"
+    ).test(haystack);
+  }
+  return haystack.includes(t);
 }
 
 export function detectPlatform(text: string): string | undefined {
   const lower = text.toLowerCase();
   const keys = Object.keys(PLATFORM_HINT).sort((a, b) => b.length - a.length);
   for (const key of keys) {
-    if (lower.includes(key)) return key;
+    if (includesPlatformToken(lower, key)) return key;
   }
   for (const [alias, key] of Object.entries(PLATFORM_ALIASES)) {
-    if (lower.includes(alias)) return key;
+    if (includesPlatformToken(lower, alias)) return key;
   }
   if (/\bx\b/.test(lower) && /account|handle|followers|2009|2010/.test(lower)) {
     return "twitter";
@@ -118,7 +150,7 @@ export function detectPlatform(text: string): string | undefined {
   if (/\bcod\b/i.test(lower) && /mobile|account|level|cp/i.test(lower)) {
     return "codm";
   }
-  return undefined;
+  return extractFreeformPlatform(text);
 }
 
 export function extractYear(text: string): number | undefined {
@@ -238,7 +270,7 @@ export function heuristicMarketQuote(
         quantity: input.quantity,
         declined: true,
         declineReason:
-          "I can’t help with that request. Rephrase with a legitimate account type and I’ll research a fixed price.",
+          "I can’t help with underage account requests. Ask for an adult account type and I’ll quote a fixed price.",
       };
     }
   }
