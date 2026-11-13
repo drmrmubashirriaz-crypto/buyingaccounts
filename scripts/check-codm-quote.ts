@@ -7,6 +7,7 @@
  */
 
 import { createFreshChat, runBotTurn } from "../src/lib/bot";
+import { looksLikePricingRefusal } from "../src/lib/llm";
 import { researchMarketQuote } from "../src/lib/market-quote";
 import { detectPlatform, heuristicMarketQuote } from "../src/lib/pricing";
 
@@ -15,6 +16,16 @@ function assert(cond: unknown, msg: string): asserts cond {
 }
 
 async function main() {
+  const bad =
+    "Looks like I don't have pricing for CODM right now. Can you pick another platform like Discord, Fortnite, or Steam?";
+  assert(looksLikePricingRefusal(bad), "detect live refusal copy");
+  assert(
+    !looksLikePricingRefusal(
+      "Yep — that CODM account is available. Fixed price is $130 USD."
+    ),
+    "good quote is not a refusal"
+  );
+
   // Unit: CODM is detected and never hard-refused by heuristic
   assert(detectPlatform("one level 300 CODM account") === "codm", "detect CODM");
   const h = heuristicMarketQuote({
@@ -67,10 +78,13 @@ async function main() {
   assert(turn.chat.quote, "expected a quote after yes");
   assert(turn.chat.quote!.priceUsd >= 15, "quoted price");
   assert(
-    !/can'?t quote|cannot quote|another platform/i.test(reply),
+    !/can'?t quote|cannot quote|another platform|don'?t have pricing/i.test(
+      reply
+    ),
     "must not refuse CODM"
   );
   assert(/\$\d+/.test(reply), "reply must include $ price");
+  assert(/available/i.test(reply), "must say available");
   assert(turn.chat.phase === "quoted", "phase quoted");
 
   console.log("OK — CODM quote path passes");

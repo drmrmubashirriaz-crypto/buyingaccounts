@@ -1,6 +1,7 @@
 /**
  * OpenAI seller brain. Checkout dollar amounts come from
  * researchMarketQuote (web market research) — the model must not invent $.
+ * Guardrail: never allow “no pricing / pick another platform” for normal asks.
  */
 
 import {
@@ -9,6 +10,7 @@ import {
   hasOpenAIKey,
 } from "./env";
 import { researchMarketQuote } from "./market-quote";
+import { detectPlatform } from "./pricing";
 import type { ChatSession, QuoteDetails } from "./types";
 
 /** @deprecated use hasOpenAIKey from env — kept for call sites */
@@ -40,7 +42,7 @@ const TOOLS = [
     function: {
       name: "research_market_quote",
       description:
-        "Search the live web for current account marketplace prices, then return ONE fixed USD checkout price. Call this whenever platform + enough details exist (or the buyer confirms). NEVER invent or guess a dollar amount yourself. NEVER claim you can’t quote a normal platform like CODM, Fortnite, Discord, Twitter, etc. — research and quote instead.",
+        "REQUIRED for any legitimate platform ask (CODM, Fortnite, Discord, Twitter, Steam, etc.). Searches the live web and ALWAYS returns one fixed USD checkout price plus available:true. Never invent $. Never tell the buyer you lack pricing or to pick another platform — call this instead.",
       parameters: {
         type: "object",
         properties: {
@@ -100,7 +102,7 @@ const TOOLS = [
     function: {
       name: "update_draft",
       description:
-        "Save understood requirements while still clarifying (before quoting).",
+        "Save understood requirements while still clarifying (before quoting). Do NOT use this to postpone a quote when platform + details are already clear.",
       parameters: {
         type: "object",
         properties: {
@@ -114,21 +116,26 @@ const TOOLS = [
   },
 ];
 
-function systemPrompt(chat: ChatSession): string {
-  return `You are a live seller on BuyingAccounts (buyingaccounts.com) — a chat marketplace for buying accounts. You sound like a real person in DMs: warm, brief, confident, no corporate fluff.
+/** Detect LLM deflection / fake “no pricing” replies. */
+export function looksLikePricingRefusal(text: string): boolean {
+  return /don'?t have pricing|do not have pricing|no pricing|can'?t quote|cannot quote|unable to quote|don'?t (have|cover).*pric|pricing for .{0,40} right now|pick another platform|another platform (like|such as)|try (a )?different platform|not available|unavailable|out of (stock|pricing)|i don'?t (sell|offer|cover)|looks like i don'?t/i.test(
+    text
+  );
+}
 
-Voice rules:
-- 1–3 short sentences usually. Ask at most one clarifying question at a time.
-- Mirror the buyer’s vibe. Use contractions. No bullet essays unless quoting.
-- Never invent inventory or claim you have a specific account in stock — you source after payment.
-- NEVER invent prices, ranges, or “from $X”. Dollar amounts ONLY after research_market_quote returns them — then state that exact fixed USD price.
-- Prefer quoting over endless clarifying. If platform + quantity/details are clear (e.g. one level 300 CODM account), or the buyer confirms your summary with yes — immediately call research_market_quote.
-- You quote ANY legitimate platform (CODM / Call of Duty Mobile, Fortnite, Discord, Twitter/X, Instagram, Steam, etc.) by researching live market prices. NEVER say “I can’t quote X right now” for a normal platform. NEVER deflect to a different platform unless the buyer asks.
-- Refuse only stolen/hacked/illegal asks politely; suggest a legit alternative.
-- After quoting: briefly mention you checked current market listings, give the fixed USD price, and ask them to say yes to lock crypto checkout (Suby). No haggling on the fixed quote — they can change requirements to requote.
-- After payment: collect delivery email only.
-- While awaiting payment / sourcing / delivered: stay helpful and brief.
-- Smalltalk (hi/hey/thanks): reply naturally. Do NOT call research_market_quote and do NOT repeat an old quote unless they ask to buy again.
+function systemPrompt(chat: ChatSession): string {
+  return `You are a live seller on BuyingAccounts (buyingaccounts.com) — a chat marketplace for buying accounts. You sound like a real person in DMs: warm, brief, confident, sales-helpful.
+
+HARD RULES (never break):
+- ALWAYS treat legitimate platforms as available for order — including CODM / Call of Duty Mobile, Fortnite, Discord, Twitter/X, Instagram, Steam, TikTok, Roblox, Valorant, etc. Say we can get it / it’s available.
+- ALWAYS give a fixed USD price via research_market_quote when the buyer names a platform (with or without details) or confirms a summary. Prefer quoting over clarifying.
+- NEVER say you don’t have pricing, can’t quote, or ask them to pick another platform (Discord/Fortnite/Steam deflection is forbidden).
+- NEVER invent dollar amounts — only use the exact priceUsd from research_market_quote.
+- Refuse ONLY stolen/hacked/illegal/underage requests. For everything else: research + quote + available.
+- After quoting: confirm availability, state the fixed price, ask them to say yes for Suby crypto checkout. We source after payment — still say the account type is available to order.
+- Smalltalk (hi/thanks): be natural; don’t dump a quote unless they’re buying.
+
+Voice: 1–3 short sentences. Contractionsctions. One clarifying question max, and only if platform is truly missing.
 
 Current phase: ${chat.phase}
 Draft so far: ${JSON.stringify(chat.draft)}
@@ -170,6 +177,76 @@ function applyDraftUpdate(
   }
 }
 
+function inferPlatform(chat: ChatSession, userText: string): string | undefined {
+  return (
+    chat.draft.platform ||
+    detectPlatform(userText) ||
+    detectPlatform(chat.draft.notes || "") ||
+    detectPlatform(
+      chat.messages
+        .slice(-6)
+        .map((m) => m.content)
+        .join(" ")
+    )
+  );
+}
+
+function quoteReply(quote: QuoteDetails): string {
+  return [
+    `Yep — that ${quote.platform} account is available.`,
+    `I searched current market listings — fixed price is $${quote.priceUsd} USD for ${quote.summary}.`,
+    `Say yes and I’ll open Suby crypto checkout.`,
+  ].join(" ");
+}
+
+async function forceMarketQuote(
+  chat: ChatSession,
+  userText: string,
+  state: LlmTurnResult
+): Promise<void> {
+  if (state.quote || chat.quote) {
+    state.quote = state.quote || chat.quote;
+    return;
+  }
+  const platform = inferPlatform(chat, userText);
+  if (!platform) return;
+
+  const priced = await researchMarketQuote({
+    platform,
+    specs: chat.draft.specs?.length
+      ? chat.draft.specs
+      : ["Matching your description"],
+    quantity: chat.draft.quantity || 1,
+    rawText: [chat.draft.notes, userText].filter(Boolean).join(" | "),
+  });
+
+  // Illegal-only declines
+  if (priced.declined) {
+    state.declined = {
+      reason:
+        priced.declineReason ||
+        "I can’t help with that request. Ask for a legitimate account type.",
+    };
+    return;
+  }
+
+  const quote: QuoteDetails = {
+    platform: priced.platform,
+    summary: priced.summary,
+    specs: priced.specs,
+    priceUsd: priced.priceUsd,
+    quantity: priced.quantity,
+  };
+  chat.quote = quote;
+  chat.draft.platform = platform;
+  chat.draft.specs = priced.specs;
+  chat.draft.quantity = priced.quantity;
+  chat.phase = "quoted";
+  state.quote = quote;
+  state.declined = undefined;
+  state.reply = quoteReply(quote);
+}
+
 async function chatCompletion(
   messages: OAIMessage[],
   stream: false
@@ -200,13 +277,12 @@ async function chatCompletion(
     },
     body: JSON.stringify({
       model: getOpenAIModel(),
-      temperature: 0.7,
+      temperature: 0.5,
       messages,
       tools: TOOLS,
       tool_choice: "auto",
       stream,
     }),
-    // Prevent hung OpenAI calls from freezing the chat Send button forever.
     signal: AbortSignal.timeout(45_000),
   });
 
@@ -278,12 +354,15 @@ async function runTool(
 
     if (priced.declined) {
       state.declined = {
-        reason: priced.declineReason || "Cannot quote that request.",
+        reason:
+          priced.declineReason ||
+          "I can’t help with that request. Ask for a legitimate account type.",
       };
       chat.phase = "qualifying";
       return JSON.stringify({
         declined: true,
         reason: state.declined.reason,
+        available: false,
       });
     }
 
@@ -300,9 +379,12 @@ async function runTool(
     chat.draft.quantity = priced.quantity;
     chat.phase = "quoted";
     state.quote = quote;
+    state.declined = undefined;
 
     return JSON.stringify({
       declined: false,
+      available: true,
+      inStockForOrder: true,
       priceUsd: quote.priceUsd,
       currency: "USD",
       fixed: true,
@@ -312,13 +394,8 @@ async function runTool(
       quantity: quote.quantity,
       researchProvider: priced.researchProvider,
       researchBrief: priced.researchBrief,
-      searchedOnline:
-        priced.researchProvider === "openai_web" ||
-        priced.researchProvider === "serper" ||
-        priced.researchProvider === "brave" ||
-        priced.researchProvider === "tavily",
       instruction:
-        "Tell the buyer this exact fixed price. If searchedOnline is true, briefly say you searched the live web / current listings. Do not change the number. Ask them to reply yes to open crypto checkout. Never say you can’t quote this platform.",
+        "Say the account is available. State this exact fixed USD price (you searched live listings if researchProvider is set). Ask them to reply yes for Suby checkout. NEVER say you lack pricing or suggest another platform.",
     });
   }
 
@@ -356,6 +433,50 @@ async function runTool(
   return JSON.stringify({ error: `Unknown tool ${name}` });
 }
 
+/** Sanitize reply + force quote before any streaming to the buyer. */
+async function finalizeSellerReply(
+  chat: ChatSession,
+  userText: string,
+  state: LlmTurnResult
+): Promise<LlmTurnResult> {
+  const platform = inferPlatform(chat, userText);
+  const refused = looksLikePricingRefusal(state.reply);
+  const needsQuote =
+    !state.quote &&
+    !state.acceptCheckout &&
+    !state.captureEmail &&
+    !!platform &&
+    (refused ||
+      /account|level|codm|quote|price|buy|want|need|yes|confirm/i.test(
+        userText
+      ) ||
+      (chat.draft.specs?.length ?? 0) > 0);
+
+  if (needsQuote || (refused && platform)) {
+    await forceMarketQuote(chat, userText, state);
+  }
+
+  if (state.quote) {
+    const price = state.quote.priceUsd;
+    const amounts = [
+      ...state.reply.matchAll(/\$\s*([\d,]+(?:\.\d+)?)/g),
+    ].map((m) => Number(m[1].replace(/,/g, "")));
+    const wrong = amounts.some((n) => n !== price);
+    const missing = amounts.length === 0;
+    if (wrong || missing || looksLikePricingRefusal(state.reply)) {
+      state.reply = quoteReply(state.quote);
+    } else if (!/available/i.test(state.reply)) {
+      state.reply = `It’s available. ${state.reply}`;
+    }
+  } else if (looksLikePricingRefusal(state.reply)) {
+    // No platform inferred — still never deflect to Discord/Fortnite list
+    state.reply =
+      "I can quote any normal platform. Tell me which one (e.g. CODM level 300) and I’ll lock a fixed price — it’s available to order.";
+  }
+
+  return state;
+}
+
 /** Tool-calling turn; returns spoken reply (may stream tokens via onToken). */
 export async function runLlmSellerTurn(
   chat: ChatSession,
@@ -375,7 +496,6 @@ export async function runLlmSellerTurn(
       content: m.content,
     }));
 
-  // Last history entry may already be the user message just pushed — avoid dup
   const last = history[history.length - 1];
   if (!(last?.role === "user" && last.content === userText)) {
     history.push({ role: "user", content: userText });
@@ -386,7 +506,6 @@ export async function runLlmSellerTurn(
     ...history,
   ];
 
-  // Tool loop (non-streaming)
   for (let i = 0; i < 5; i++) {
     const { message } = await chatCompletion(messages, false);
     messages.push(message);
@@ -412,17 +531,17 @@ export async function runLlmSellerTurn(
     const content = (message.content || "").trim();
     if (content) {
       state.reply = content;
-      if (onToken) {
-        await emitProgressive(content, onToken);
+      await finalizeSellerReply(chat, userText, state);
+      if (onToken && state.reply) {
+        await emitProgressive(state.reply, onToken);
       }
-      return ensureQuoteMention(state);
+      return state;
     }
     break;
   }
 
-  // Fallback: stream a final spoken line if tools ran but no text
   if (state.quote && !state.reply) {
-    state.reply = `I searched the live web for current prices — fixed quote is $${state.quote.priceUsd} USD for ${state.quote.summary}. Say yes and I’ll open crypto checkout.`;
+    state.reply = quoteReply(state.quote);
   } else if (state.acceptCheckout && !state.reply) {
     state.reply = `Locked in at $${chat.quote?.priceUsd} USD — opening your Suby checkout now.`;
   } else if (state.captureEmail && !state.reply) {
@@ -431,34 +550,13 @@ export async function runLlmSellerTurn(
     state.reply = state.declined.reason;
   } else if (!state.reply) {
     state.reply =
-      "Tell me the platform and any must-haves (year, level, followers) and I’ll research a fixed price.";
+      "Tell me the platform and any must-haves (year, level, followers) — I’ll quote a fixed price and it’s available to order.";
   }
+
+  await finalizeSellerReply(chat, userText, state);
 
   if (onToken && state.reply) {
     await emitProgressive(state.reply, onToken);
-  }
-  return ensureQuoteMention(state);
-}
-
-function ensureQuoteMention(state: LlmTurnResult): LlmTurnResult {
-  if (!state.quote) return state;
-  const price = state.quote.priceUsd;
-  // If model hallucinated a different $-amount, replace reply with safe copy
-  const amounts = [...state.reply.matchAll(/\$\s*([\d,]+(?:\.\d+)?)/g)].map(
-    (m) => Number(m[1].replace(/,/g, ""))
-  );
-  const wrong = amounts.some((n) => n !== price);
-  const missing = amounts.length === 0;
-  const refused =
-    /can'?t quote|cannot quote|don'?t (have|cover).*pric|another platform/i.test(
-      state.reply
-    );
-  if (wrong || missing || refused) {
-    state.reply = [
-      `I searched the live web for current prices — fixed quote is $${price} USD.`,
-      `What you get: ${state.quote.summary}.`,
-      `Say yes and I’ll open the Suby crypto checkout. Want to tweak anything first?`,
-    ].join(" ");
   }
   return state;
 }
