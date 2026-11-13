@@ -312,8 +312,13 @@ async function runTool(
       quantity: quote.quantity,
       researchProvider: priced.researchProvider,
       researchBrief: priced.researchBrief,
+      searchedOnline:
+        priced.researchProvider === "openai_web" ||
+        priced.researchProvider === "serper" ||
+        priced.researchProvider === "brave" ||
+        priced.researchProvider === "tavily",
       instruction:
-        "Tell the buyer this exact fixed price (you researched live market listings). Do not change the number. Ask them to reply yes to open crypto checkout. Never say you can’t quote this platform.",
+        "Tell the buyer this exact fixed price. If searchedOnline is true, briefly say you searched the live web / current listings. Do not change the number. Ask them to reply yes to open crypto checkout. Never say you can’t quote this platform.",
     });
   }
 
@@ -417,7 +422,7 @@ export async function runLlmSellerTurn(
 
   // Fallback: stream a final spoken line if tools ran but no text
   if (state.quote && !state.reply) {
-    state.reply = `I checked current listings — fixed price is $${state.quote.priceUsd} USD for ${state.quote.summary}. Say yes and I’ll open crypto checkout.`;
+    state.reply = `I searched the live web for current prices — fixed quote is $${state.quote.priceUsd} USD for ${state.quote.summary}. Say yes and I’ll open crypto checkout.`;
   } else if (state.acceptCheckout && !state.reply) {
     state.reply = `Locked in at $${chat.quote?.priceUsd} USD — opening your Suby checkout now.`;
   } else if (state.captureEmail && !state.reply) {
@@ -450,7 +455,7 @@ function ensureQuoteMention(state: LlmTurnResult): LlmTurnResult {
     );
   if (wrong || missing || refused) {
     state.reply = [
-      `I checked current market listings — fixed price is $${price} USD.`,
+      `I searched the live web for current prices — fixed quote is $${price} USD.`,
       `What you get: ${state.quote.summary}.`,
       `Say yes and I’ll open the Suby crypto checkout. Want to tweak anything first?`,
     ].join(" ");

@@ -191,11 +191,15 @@ export async function researchMarketQuote(
   priceUsd = Math.max(15, roundQuote(priceUsd));
 
   const label = labelPlatform(platform);
+  const searched =
+    search.searchedOnline === true || search.provider === "openai_web";
   const brief =
     synthesized?.brief ||
     (fromObs
       ? `Public listings clustered around $${fromObs.low}–$${fromObs.high}; quote includes sourcing buffer.`
-      : `Market scan was thin — priced competitively for ${label} with room to source.`);
+      : searched
+        ? `Searched the live web for ${label} listings; locked a competitive fixed checkout price.`
+        : `Couldn’t reach live search — priced competitively for ${label} with room to source.`);
 
   const summary = `${qty > 1 ? `${qty}× ` : ""}${label} account — ${specs.join(", ")}`;
 
@@ -209,6 +213,8 @@ export async function researchMarketQuote(
     researchQuery: query,
     marketLow: fromObs?.low,
     marketHigh: fromObs?.high,
-    researchBrief: brief,
+    researchBrief: searched
+      ? `Live web search (${search.provider}): ${brief}`
+      : brief,
   };
 }

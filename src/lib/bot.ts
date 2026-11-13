@@ -409,14 +409,24 @@ async function runRulesPath(
   chat.phase = "quoted";
   chat.draft.specs = priced.specs;
 
+  const searchedLive =
+    priced.researchProvider === "openai_web" ||
+    priced.researchProvider === "serper" ||
+    priced.researchProvider === "brave" ||
+    priced.researchProvider === "tavily";
   const researchBit = priced.researchBrief
     ? ` ${priced.researchBrief}`
-    : " Checked current public listings.";
+    : searchedLive
+      ? " I searched the live web for current listings."
+      : " Used a competitive estimate while search was unavailable.";
 
   const body = pick([
-    `Alright — researched the market.${researchBit}\n\nFixed price is $${quote.priceUsd} USD.\n\nWhat you get: ${quote.summary}.\n\nSay yes and I’ll open Suby crypto checkout. Want to tweak anything first?`,
-    `I pulled current marketplace signals — $${quote.priceUsd} USD fixed for ${quote.summary}.\n\nReply yes to pay, or tell me what to change.`,
-    `Market-based fixed quote: $${quote.priceUsd} USD for ${quote.summary}. Yes locks Suby checkout, or change the specs and I’ll research again.`,
+    searchedLive
+      ? `Alright — I searched online for current prices.${researchBit}\n\nFixed price is $${quote.priceUsd} USD.\n\nWhat you get: ${quote.summary}.\n\nSay yes and I’ll open Suby crypto checkout. Want to tweak anything first?`
+      : `Alright — fixed price is $${quote.priceUsd} USD.${researchBit}\n\nWhat you get: ${quote.summary}.\n\nSay yes and I’ll open Suby crypto checkout.`,
+    `$${quote.priceUsd} USD fixed for ${quote.summary}.${
+      searchedLive ? " Based on live web market search." : ""
+    }\n\nReply yes to pay, or tell me what to change.`,
   ]);
 
   return reply(body, { kind: "quote", priceUsd: quote.priceUsd });
