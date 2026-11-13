@@ -61,7 +61,7 @@ async function main() {
   }
 
   // Dialogue shaped like the live bug (rules engine when no key)
-  const chat = createFreshChat();
+  const chat = createFreshChat("test-viewer");
   // Seed draft as if bot already confirmed "one level 300 CODM"
   chat.phase = "qualifying";
   chat.draft = {

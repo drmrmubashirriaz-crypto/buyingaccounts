@@ -33,10 +33,11 @@ const GREETINGS = [
   "Welcome in. Drop the platform and the details that matter — I’ll give you one fixed price, no catalog hunting.",
 ];
 
-export function createFreshChat(): ChatSession {
+export function createFreshChat(ownerSub: string): ChatSession {
   const now = new Date().toISOString();
   return {
     id: uuid(),
+    ownerSub,
     phase: "greeting",
     draft: { specs: [], quantity: 1 },
     messages: [

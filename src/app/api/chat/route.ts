@@ -11,12 +11,16 @@ import { allowAnonymousMockComplete } from "@/lib/mock-payments";
 import { createCheckout } from "@/lib/suby";
 import { getChat, getOrder, saveChat, saveOrder } from "@/lib/store";
 import type { Order } from "@/lib/types";
+import { jsonPrivate, ownsChat, requireViewer } from "@/lib/viewer-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
+    const viewer = await requireViewer(req);
+    if (viewer instanceof NextResponse) return viewer;
+
     const status = getChatModeStatus();
     const chatId = req.nextUrl.searchParams.get("chatId");
     const extras = {
@@ -26,23 +30,27 @@ export async function GET(req: NextRequest) {
       model: status.model,
       allowMockComplete: allowAnonymousMockComplete(),
     };
+
     if (!chatId) {
-      const chat = createFreshChat();
+      const chat = createFreshChat(viewer.sub);
       await saveChat(chat);
-      return NextResponse.json({ chat, ...extras });
+      return jsonPrivate({ chat, ...extras });
     }
+
     const chat = await getChat(chatId);
-    if (!chat) {
-      const fresh = createFreshChat();
+    if (!ownsChat(chat, viewer.sub)) {
+      // Unknown or someone else's chat — never leak; start a fresh owned session
+      const fresh = createFreshChat(viewer.sub);
       await saveChat(fresh);
-      return NextResponse.json({ chat: fresh, ...extras });
+      return jsonPrivate({ chat: fresh, ...extras });
     }
-    return NextResponse.json({ chat, ...extras });
+
+    return jsonPrivate({ chat, ...extras });
   } catch (err) {
     console.error("[chat GET]", err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "chat open failed" },
-      { status: 500 }
+      { status: 500, headers: { "Cache-Control": "private, no-store" } }
     );
   }
 }
@@ -61,12 +69,15 @@ export async function POST(req: NextRequest) {
 
     const status = getChatModeStatus();
     let chat = body.chatId ? await getChat(body.chatId) : null;
-    if (!chat) chat = createFreshChat();
+    if (!ownsChat(chat, gated.ownerSub)) {
+      chat = createFreshChat(gated.ownerSub);
+    }
 
     const { chat: next, actions, engine, fallbackReason } = await runBotTurn(
       chat,
       message
     );
+    next.ownerSub = gated.ownerSub;
 
     if (actions.createCheckout) {
       const orderId = uuid();
@@ -80,6 +91,7 @@ export async function POST(req: NextRequest) {
       const order: Order = {
         id: orderId,
         chatId: next.id,
+        ownerSub: gated.ownerSub,
         status: "awaiting_payment",
         quote,
         paymentId: checkout.id,
@@ -99,7 +111,7 @@ export async function POST(req: NextRequest) {
 
     if (actions.captureEmail && next.orderId) {
       const order = await getOrder(next.orderId);
-      if (order) {
+      if (order && order.ownerSub === gated.ownerSub) {
         order.buyerEmail = actions.captureEmail;
         order.status = "sourcing";
         order.updatedAt = new Date().toISOString();
@@ -108,8 +120,11 @@ export async function POST(req: NextRequest) {
     }
 
     await saveChat(next);
-    const order = next.orderId ? await getOrder(next.orderId) : null;
-    return NextResponse.json({
+    const order =
+      next.orderId && (await getOrder(next.orderId))?.ownerSub === gated.ownerSub
+        ? await getOrder(next.orderId)
+        : null;
+    return jsonPrivate({
       chat: next,
       order,
       engine,
@@ -122,7 +137,7 @@ export async function POST(req: NextRequest) {
     console.error("[chat POST]", err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "chat turn failed" },
-      { status: 500 }
+      { status: 500, headers: { "Cache-Control": "private, no-store" } }
     );
   }
 }
