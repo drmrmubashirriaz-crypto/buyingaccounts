@@ -3,6 +3,7 @@ import { discordListing } from "./discord";
 import { fortniteListing } from "./fortnite";
 import { netflixListing } from "./netflix";
 import { semrushListing } from "./semrush";
+import { snapchatListing } from "./snapchat";
 import { steamListing } from "./steam";
 import type { ListingGuide } from "./types";
 
@@ -18,6 +19,7 @@ export const listingGuides: ListingGuide[] = [
   codmListing,
   fortniteListing,
   netflixListing,
+  snapchatListing,
   steamListing,
   semrushListing,
 ];
