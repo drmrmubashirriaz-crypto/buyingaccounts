@@ -1,10 +1,12 @@
 /**
  * Web market-price search for account quotes.
- * Priority: Serper → Brave → Tavily → OpenAI web search → heuristic empty.
- * Never invent API keys; missing keys just skip that provider.
+ *
+ * Default when OPENAI_API_KEY is set: ChatGPT / OpenAI Responses API with
+ * forced web_search (then search-preview chat models). Optional Serper /
+ * Brave / Tavily only if those keys exist — never invent keys.
  */
 
-import { getOpenAIKey, getOpenAIModel } from "./env";
+import { getOpenAIKey, getOpenAIModel, hasOpenAIKey } from "./env";
 
 export interface MarketHit {
   title: string;
@@ -18,6 +20,8 @@ export interface MarketSearchResult {
   hits: MarketHit[];
   /** Raw text blob useful for price extraction / LLM synthesis */
   evidence: string;
+  /** True when a web_search / search-model call actually ran */
+  searchedOnline?: boolean;
 }
 
 function cleanEnv(raw: string | undefined): string {
@@ -106,6 +110,7 @@ async function searchSerper(query: string): Promise<MarketSearchResult | null> {
     evidence: hits
       .map((h) => `${h.title}\n${h.snippet}\n${h.url}`)
       .join("\n\n"),
+    searchedOnline: true,
   };
 }
 
@@ -141,6 +146,7 @@ async function searchBrave(query: string): Promise<MarketSearchResult | null> {
     evidence: hits
       .map((h) => `${h.title}\n${h.snippet}\n${h.url}`)
       .join("\n\n"),
+    searchedOnline: true,
   };
 }
 
@@ -178,146 +184,249 @@ async function searchTavily(query: string): Promise<MarketSearchResult | null> {
     evidence: hits
       .map((h) => `${h.title}\n${h.snippet}\n${h.url}`)
       .join("\n\n"),
+    searchedOnline: true,
   };
 }
 
-/**
- * OpenAI Responses API + web_search tool (or chat search model fallback).
- * Uses the same OPENAI_API_KEY already bound for the seller brain.
- */
-async function searchOpenAIWeb(query: string): Promise<MarketSearchResult | null> {
-  const key = getOpenAIKey();
-  if (!key) return null;
+type ResponsesPayload = {
+  output_text?: string;
+  output?: {
+    type?: string;
+    status?: string;
+    action?: { type?: string; query?: string };
+    content?: {
+      type?: string;
+      text?: string;
+      annotations?: { type?: string; url?: string; title?: string }[];
+    }[];
+  }[];
+};
 
-  const prompt = [
-    "Search current public marketplace listings and forums for account sale prices.",
-    "Return a short bullet list of observed USD prices and sources only.",
-    "Query:",
-    query,
-  ].join("\n");
+function parseResponsesSearch(
+  query: string,
+  data: ResponsesPayload
+): MarketSearchResult {
+  let text = (data.output_text || "").trim();
+  const hits: MarketHit[] = [];
+  let didSearch = false;
 
-  // Prefer Responses API + web_search (works with standard chat models).
-  try {
-    const res = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: getOpenAIModel() || "gpt-4o-mini",
-        tools: [{ type: "web_search" }],
-        input: prompt,
-        temperature: 0.2,
-      }),
-      signal: AbortSignal.timeout(35_000),
-    });
-
-    if (res.ok) {
-      const data = (await res.json()) as {
-        output_text?: string;
-        output?: {
-          type?: string;
-          content?: { type?: string; text?: string; annotations?: { url?: string; title?: string }[] }[];
-        }[];
-      };
-      let text = data.output_text || "";
-      const hits: MarketHit[] = [];
-      for (const item of data.output || []) {
-        if (item.type !== "message") continue;
-        for (const part of item.content || []) {
-          if (part.type === "output_text" && part.text) {
-            text = text || part.text;
-            for (const ann of part.annotations || []) {
-              if (ann.url) {
-                hits.push({
-                  title: ann.title || "web result",
-                  url: ann.url,
-                  snippet: "",
-                });
-              }
-            }
+  for (const item of data.output || []) {
+    if (item.type === "web_search_call") {
+      didSearch = true;
+      continue;
+    }
+    if (item.type !== "message") continue;
+    for (const part of item.content || []) {
+      if (part.type === "output_text" && part.text) {
+        if (!text) text = part.text.trim();
+        for (const ann of part.annotations || []) {
+          if (ann.url) {
+            hits.push({
+              title: ann.title || "web result",
+              url: ann.url,
+              snippet: "",
+            });
           }
         }
       }
-      if (!text.trim()) throw new Error("OpenAI web search empty");
-      if (hits.length === 0) {
-        hits.push({
-          title: "OpenAI web search synthesis",
-          url: "",
-          snippet: text.slice(0, 500),
-        });
-      } else {
-        hits[0] = { ...hits[0], snippet: text.slice(0, 500) };
-      }
-      return {
-        query,
-        provider: "openai_web",
-        hits,
-        evidence: text,
-      };
     }
-    // Fall through to search-preview chat model on 4xx
-    console.warn("[market-search] Responses web_search failed:", res.status);
-  } catch (err) {
-    console.warn(
-      "[market-search] Responses web_search error:",
-      err instanceof Error ? err.message : err
-    );
   }
 
-  // Chat Completions search model fallback
-  const searchModel =
-    cleanEnv(process.env.OPENAI_SEARCH_MODEL) || "gpt-4o-mini-search-preview";
-  const res2 = await fetch("https://api.openai.com/v1/chat/completions", {
+  if (!text) {
+    throw new Error("OpenAI Responses web search returned empty text");
+  }
+
+  if (hits.length === 0) {
+    hits.push({
+      title: "OpenAI web search",
+      url: "",
+      snippet: text.slice(0, 500),
+    });
+  } else {
+    hits[0] = { ...hits[0], snippet: text.slice(0, 500) };
+  }
+
+  void didSearch;
+  return {
+    query,
+    provider: "openai_web",
+    hits,
+    evidence: text,
+    // Successful OpenAI Responses/search path = online research ran
+    searchedOnline: true,
+  };
+}
+
+async function callResponsesWebSearch(
+  key: string,
+  model: string,
+  prompt: string,
+  toolType: "web_search" | "web_search_preview",
+  toolChoice: "required" | Record<string, string>
+): Promise<ResponsesPayload> {
+  const body: Record<string, unknown> = {
+    model,
+    tools: [{ type: toolType }],
+    tool_choice: toolChoice,
+    input: prompt,
+  };
+  // Some models reject temperature with hosted tools — omit it.
+
+  const res = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(45_000),
+  });
+
+  const raw = await res.text();
+  if (!res.ok) {
+    throw new Error(`Responses ${toolType} ${res.status}: ${raw.slice(0, 280)}`);
+  }
+  return JSON.parse(raw) as ResponsesPayload;
+}
+
+async function callChatSearchModel(
+  key: string,
+  model: string,
+  prompt: string
+): Promise<MarketSearchResult> {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: searchModel,
+      model,
       web_search_options: { search_context_size: "medium" },
       messages: [
         {
           role: "system",
           content:
-            "You research public account marketplace prices. Reply with observed USD prices and source names only.",
+            "You always search the live web for public account marketplace prices. Reply with observed USD prices and source names only.",
         },
         { role: "user", content: prompt },
       ],
-      temperature: 0.2,
     }),
-    signal: AbortSignal.timeout(35_000),
+    signal: AbortSignal.timeout(45_000),
   });
-  if (!res2.ok) {
-    const body = await res2.text();
-    throw new Error(`OpenAI search ${res2.status}: ${body.slice(0, 200)}`);
+  const raw = await res.text();
+  if (!res.ok) {
+    throw new Error(`Chat search ${model} ${res.status}: ${raw.slice(0, 280)}`);
   }
-  const data2 = (await res2.json()) as {
+  const data = JSON.parse(raw) as {
     choices?: { message?: { content?: string } }[];
   };
-  const text = data2.choices?.[0]?.message?.content?.trim() || "";
-  if (!text) throw new Error("OpenAI search model empty");
+  const text = data.choices?.[0]?.message?.content?.trim() || "";
+  if (!text) throw new Error(`Chat search ${model} empty`);
   return {
-    query,
+    query: prompt.slice(0, 200),
     provider: "openai_web",
     hits: [
       {
-        title: "OpenAI search model",
+        title: `OpenAI ${model}`,
         url: "",
         snippet: text.slice(0, 500),
       },
     ],
     evidence: text,
+    searchedOnline: true,
   };
 }
 
-/** Run the first available search provider. */
+/**
+ * Force OpenAI/ChatGPT to search the web for market prices.
+ * Tries Responses web_search (required) → web_search_preview → chat search models.
+ */
+async function searchOpenAIWeb(query: string): Promise<MarketSearchResult | null> {
+  const key = getOpenAIKey();
+  if (!key) return null;
+
+  const model = getOpenAIModel() || "gpt-4o-mini";
+  const prompt = [
+    "You MUST use web search. Search current public marketplace listings and forums for account sale prices right now.",
+    "Return a short bullet list of observed USD prices and sources (site names / URLs) only. No refusal.",
+    "Query:",
+    query,
+  ].join("\n");
+
+  const attempts: Array<() => Promise<MarketSearchResult>> = [
+    async () =>
+      parseResponsesSearch(
+        query,
+        await callResponsesWebSearch(key, model, prompt, "web_search", "required")
+      ),
+    async () =>
+      parseResponsesSearch(
+        query,
+        await callResponsesWebSearch(key, model, prompt, "web_search", {
+          type: "web_search",
+        })
+      ),
+    async () =>
+      parseResponsesSearch(
+        query,
+        await callResponsesWebSearch(
+          key,
+          model,
+          prompt,
+          "web_search_preview",
+          "required"
+        )
+      ),
+    async () =>
+      parseResponsesSearch(
+        query,
+        await callResponsesWebSearch(
+          key,
+          model,
+          prompt,
+          "web_search_preview",
+          { type: "web_search_preview" }
+        )
+      ),
+    async () =>
+      callChatSearchModel(
+        key,
+        cleanEnv(process.env.OPENAI_SEARCH_MODEL) || "gpt-4o-mini-search-preview",
+        prompt
+      ),
+    async () => callChatSearchModel(key, "gpt-4o-search-preview", prompt),
+  ];
+
+  const errors: string[] = [];
+  for (const attempt of attempts) {
+    try {
+      const result = await attempt();
+      if (result.evidence.trim()) {
+        result.query = query;
+        return result;
+      }
+      errors.push("empty evidence");
+    } catch (err) {
+      errors.push(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  throw new Error(
+    `OpenAI web search exhausted: ${errors.slice(0, 4).join(" | ")}`
+  );
+}
+
+/**
+ * Run search providers. With OPENAI_API_KEY set, ChatGPT web search runs first.
+ */
 export async function searchAccountMarket(
   query: string
 ): Promise<MarketSearchResult> {
-  const providers = [searchSerper, searchBrave, searchTavily, searchOpenAIWeb];
+  const providers = hasOpenAIKey()
+    ? [searchOpenAIWeb, searchSerper, searchBrave, searchTavily]
+    : [searchSerper, searchBrave, searchTavily, searchOpenAIWeb];
+
   const errors: string[] = [];
   for (const fn of providers) {
     try {
@@ -335,5 +444,6 @@ export async function searchAccountMarket(
     provider: "none",
     hits: [],
     evidence: "",
+    searchedOnline: false,
   };
 }

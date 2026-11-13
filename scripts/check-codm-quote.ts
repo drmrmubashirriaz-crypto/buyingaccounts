@@ -42,6 +42,12 @@ async function main() {
     researched.researchProvider || "n/a",
     researched.researchBrief || researched.summary
   );
+  if (process.env.OPENAI_API_KEY) {
+    assert(
+      researched.researchProvider === "openai_web",
+      "with OPENAI_API_KEY, provider must be openai_web (ChatGPT web search)"
+    );
+  }
 
   // Dialogue shaped like the live bug (rules engine when no key)
   const chat = createFreshChat();
