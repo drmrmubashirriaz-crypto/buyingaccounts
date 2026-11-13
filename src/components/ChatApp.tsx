@@ -354,7 +354,7 @@ export default function ChatApp() {
               }`}
               title={
                 engine === "llm"
-                  ? "OpenAI seller brain (prices from pricing.ts)"
+                  ? "OpenAI seller brain (quotes from live market research)"
                   : engine === "llm_error"
                     ? "OPENAI_API_KEY is set but the last OpenAI call failed — see chat"
                     : hasKey
