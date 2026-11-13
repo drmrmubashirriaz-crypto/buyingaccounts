@@ -422,9 +422,9 @@ async function runRulesPath(
 
   const body = pick([
     searchedLive
-      ? `Alright — I searched online for current prices.${researchBit}\n\nFixed price is $${quote.priceUsd} USD.\n\nWhat you get: ${quote.summary}.\n\nSay yes and I’ll open Suby crypto checkout. Want to tweak anything first?`
-      : `Alright — fixed price is $${quote.priceUsd} USD.${researchBit}\n\nWhat you get: ${quote.summary}.\n\nSay yes and I’ll open Suby crypto checkout.`,
-    `$${quote.priceUsd} USD fixed for ${quote.summary}.${
+      ? `Yep — that ${quote.platform} account is available. I searched online for current prices.${researchBit}\n\nFixed price is $${quote.priceUsd} USD for ${quote.summary}.\n\nSay yes and I’ll open Suby crypto checkout.`
+      : `Yep — that ${quote.platform} account is available. Fixed price is $${quote.priceUsd} USD for ${quote.summary}.${researchBit}\n\nSay yes and I’ll open Suby crypto checkout.`,
+    `Available — $${quote.priceUsd} USD fixed for ${quote.summary}.${
       searchedLive ? " Based on live web market search." : ""
     }\n\nReply yes to pay, or tell me what to change.`,
   ]);
