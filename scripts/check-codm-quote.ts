@@ -37,6 +37,11 @@ async function main() {
     "detect Gmail→Twitter platform swap"
   );
   assert(detectPlatform("I need a Gmail account") === "gmail", "detect Gmail");
+  assert(
+    detectPlatform("buy netflix account") === "netflix",
+    "detect freeform netflix"
+  );
+  assert(detectPlatform("netflix account please") === "netflix", "netflix freeform");
   const gmailH = heuristicMarketQuote({
     platform: "gmail",
     specs: ["Standard account matching your description"],
@@ -46,6 +51,22 @@ async function main() {
   assert(!gmailH.declined, "heuristic must not decline Gmail");
   assert(gmailH.priceUsd >= 15, "gmail heuristic price");
   console.log("heuristic Gmail quote: $%d — %s", gmailH.priceUsd, gmailH.summary);
+
+  const hacked = heuristicMarketQuote({
+    platform: "steam",
+    specs: [],
+    quantity: 1,
+    rawText: "hacked steam account",
+  });
+  assert(!hacked.declined, "must quote even if wording includes hacked");
+  const netflix = heuristicMarketQuote({
+    platform: "netflix",
+    specs: [],
+    quantity: 1,
+    rawText: "netflix account",
+  });
+  assert(!netflix.declined && netflix.priceUsd >= 15, "quote unknown platforms");
+  console.log("heuristic Netflix quote: $%d — %s", netflix.priceUsd, netflix.summary);
 
   // Unit: CODM is detected and never hard-refused by heuristic
   assert(detectPlatform("one level 300 CODM account") === "codm", "detect CODM");

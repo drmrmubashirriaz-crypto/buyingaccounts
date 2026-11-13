@@ -64,7 +64,7 @@ async function synthesizeWithOpenAI(input: {
           content: [
             "You are a pricing analyst for BuyingAccounts, a middleman that sources accounts after crypto payment.",
             "Given marketplace evidence, pick ONE fixed retail USD checkout price that is competitive but covers sourcing risk (~15–30% above typical public listing mid).",
-            "Never refuse a legitimate gaming/social platform (CODM, Fortnite, Discord, Twitter, etc.).",
+            "Never refuse any account type the buyer asked for — always pick a fixed checkout price.",
             "Reply JSON only: {\"priceUsd\": number, \"brief\": \"one short sentence on market basis\"}",
           ].join(" "),
         },

@@ -338,49 +338,33 @@ async function runRulesPath(
     mergeDraft(chat, text);
   }
 
-  // Buyer confirms a draft (e.g. "yes" after "one level 300 CODM") → research + quote
+  // Always quote when they named anything account-like — never stall on clarifying
+  if (!chat.draft.platform) {
+    const guessed =
+      detectPlatform(text) ||
+      detectPlatform(chat.draft.notes || "") ||
+      (/account|buy|need|want|looking|quote|price/i.test(text)
+        ? "account"
+        : undefined);
+    if (guessed) {
+      chat.draft.platform = guessed;
+      if (!chat.draft.quantity) chat.draft.quantity = 1;
+    }
+  }
+
   if (
     looksLikeAccept(text) &&
     chat.phase !== "quoted" &&
-    chat.draft.platform &&
-    (chat.draft.specs.length > 0 ||
-      /level|account|codm|fortnite|twitter|discord/i.test(
-        chat.draft.notes || ""
-      ))
+    chat.draft.platform
   ) {
     // fall through to researchMarketQuote below
   } else if (!chat.draft.platform) {
     chat.phase = "qualifying";
     return reply(
       pick([
-        "Which platform — CODM, Fortnite, Twitter/X, Discord, Steam…? Any level, year, or stats I should know?",
-        "Got it. What’s the platform? Throw in age, level, followers, whatever matters and I’ll research a fixed price.",
-        "Sure — name the platform first and I’ll take it from there.",
+        "What account do you need? Name any platform and I’ll quote a fixed price — it’s available.",
+        "Tell me the platform (any service or game) and I’ll lock a fixed USD quote right away.",
       ])
-    );
-  }
-
-  const thin =
-    chat.draft.specs.length === 0 &&
-    !/(account|need|want|looking|buy|\d{4}|level|cp|follower|yes|confirm)/i.test(
-      text
-    );
-
-  if (thin && chat.phase !== "quoted") {
-    chat.phase = "qualifying";
-    const label = chat.draft.platform;
-    return reply(
-      pick([
-        `Okay, ${label}. Anything must-have — creation year, followers, level, verified? Even one detail and I’ll research the market and quote.`,
-        `${label}, noted. Want a specific year or stats, or should I research a standard ${label} account price now?`,
-      ])
-    );
-  }
-
-  if (!chat.draft.platform) {
-    chat.phase = "qualifying";
-    return reply(
-      "Name the platform (CODM, Fortnite, Twitter…) and I’ll research a fixed price."
     );
   }
 
