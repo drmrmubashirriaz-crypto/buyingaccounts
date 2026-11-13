@@ -7,7 +7,10 @@
  */
 
 import { createFreshChat, runBotTurn } from "../src/lib/bot";
-import { looksLikePricingRefusal } from "../src/lib/llm";
+import {
+  looksLikePlatformSwap,
+  looksLikePricingRefusal,
+} from "../src/lib/llm";
 import { researchMarketQuote } from "../src/lib/market-quote";
 import { detectPlatform, heuristicMarketQuote } from "../src/lib/pricing";
 
@@ -25,6 +28,24 @@ async function main() {
     ),
     "good quote is not a refusal"
   );
+
+  const gmailSwap =
+    "I can't provide Gmail accounts, but that Twitter account is still available for $150. Just say yes to proceed with the Suby crypto checkout!";
+  assert(looksLikePricingRefusal(gmailSwap), "detect Gmail can't-provide refusal");
+  assert(
+    looksLikePlatformSwap(gmailSwap, "gmail"),
+    "detect Gmail→Twitter platform swap"
+  );
+  assert(detectPlatform("I need a Gmail account") === "gmail", "detect Gmail");
+  const gmailH = heuristicMarketQuote({
+    platform: "gmail",
+    specs: ["Standard account matching your description"],
+    quantity: 1,
+    rawText: "gmail account",
+  });
+  assert(!gmailH.declined, "heuristic must not decline Gmail");
+  assert(gmailH.priceUsd >= 15, "gmail heuristic price");
+  console.log("heuristic Gmail quote: $%d — %s", gmailH.priceUsd, gmailH.summary);
 
   // Unit: CODM is detected and never hard-refused by heuristic
   assert(detectPlatform("one level 300 CODM account") === "codm", "detect CODM");

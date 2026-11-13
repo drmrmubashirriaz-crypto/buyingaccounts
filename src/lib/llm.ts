@@ -42,14 +42,14 @@ const TOOLS = [
     function: {
       name: "research_market_quote",
       description:
-        "REQUIRED for any legitimate platform ask (CODM, Fortnite, Discord, Twitter, Steam, etc.). Searches the live web and ALWAYS returns one fixed USD checkout price plus available:true. Never invent $. Never tell the buyer you lack pricing or to pick another platform — call this instead.",
+        "REQUIRED for any legitimate platform ask (Gmail, Google, CODM, Fortnite, Discord, Twitter, Steam, etc.). Searches the live web and ALWAYS returns one fixed USD checkout price plus available:true for THAT platform. Never invent $. Never say you can’t provide Gmail (or any normal platform). Never swap to a different platform — call this for what they asked.",
       parameters: {
         type: "object",
         properties: {
           platform: {
             type: "string",
             description:
-              "Platform name, e.g. CODM, Fortnite, Twitter, Discord",
+              "Exact platform the buyer asked for, e.g. Gmail, CODM, Fortnite, Twitter, Discord",
           },
           specs: {
             type: "array",
@@ -116,20 +116,52 @@ const TOOLS = [
   },
 ];
 
-/** Detect LLM deflection / fake “no pricing” replies. */
+/** Detect LLM deflection / fake “no pricing” / “can’t provide” replies. */
 export function looksLikePricingRefusal(text: string): boolean {
-  return /don'?t have pricing|do not have pricing|no pricing|can'?t quote|cannot quote|unable to quote|don'?t (have|cover).*pric|pricing for .{0,40} right now|pick another platform|another platform (like|such as)|try (a )?different platform|not available|unavailable|out of (stock|pricing)|i don'?t (sell|offer|cover)|looks like i don'?t/i.test(
+  return /don'?t have pricing|do not have pricing|no pricing|can'?t quote|cannot quote|unable to quote|can'?t provide|cannot provide|don'?t provide|can'?t sell|cannot sell|don'?t sell|i can'?t (help with|offer|do)|don'?t (have|cover).*pric|pricing for .{0,40} right now|pick another platform|another platform (like|such as)|try (a )?different platform|not available|unavailable|out of (stock|pricing)|i don'?t (sell|offer|cover|provide)|looks like i don'?t|still available for .{0,40}(?!that)|but that .{0,30} (is )?still available/i.test(
     text
   );
+}
+
+/** True when the bot offered a different platform than the buyer asked for. */
+export function looksLikePlatformSwap(
+  reply: string,
+  requestedPlatform?: string
+): boolean {
+  if (!requestedPlatform) return false;
+  const req = requestedPlatform.toLowerCase();
+  const aliases: Record<string, RegExp> = {
+    gmail: /\bgmail\b|\bgoogle\b/i,
+    google: /\bgmail\b|\bgoogle\b/i,
+    twitter: /\btwitter\b|\bx\b/i,
+    x: /\btwitter\b|\bx\b/i,
+    codm: /\bcodm\b|call of duty/i,
+    fortnite: /\bfortnite\b/i,
+    discord: /\bdiscord\b/i,
+    steam: /\bsteam\b/i,
+    instagram: /\binstagram\b|\big\b/i,
+  };
+  const reqRe =
+    aliases[req] || new RegExp(`\\b${req.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+  // Refusal of requested + pitch of another known platform
+  const refusedRequested =
+    /(can'?t|cannot|don'?t|do not)\s+(provide|quote|sell|offer|cover).{0,40}/i.test(
+      reply
+    ) && reqRe.test(reply);
+  const otherPitch =
+    /\b(twitter|x|fortnite|discord|steam|instagram|codm|gmail)\b/i.test(reply) &&
+    !reqRe.test(reply.replace(/(can'?t|cannot|don'?t|do not)\s+(provide|quote|sell|offer).{0,60}/gi, ""));
+  return refusedRequested || (refusedRequested && otherPitch);
 }
 
 function systemPrompt(chat: ChatSession): string {
   return `You are a live seller on BuyingAccounts (buyingaccounts.com) — a chat marketplace for buying accounts. You sound like a real person in DMs: warm, brief, confident, sales-helpful.
 
 HARD RULES (never break):
-- ALWAYS treat legitimate platforms as available for order — including CODM / Call of Duty Mobile, Fortnite, Discord, Twitter/X, Instagram, Steam, TikTok, Roblox, Valorant, etc. Say we can get it / it’s available.
-- ALWAYS give a fixed USD price via research_market_quote when the buyer names a platform (with or without details) or confirms a summary. Prefer quoting over clarifying.
-- NEVER say you don’t have pricing, can’t quote, or ask them to pick another platform (Discord/Fortnite/Steam deflection is forbidden).
+- ALWAYS treat legitimate platforms as available for order — including Gmail, Google, CODM / Call of Duty Mobile, Fortnite, Discord, Twitter/X, Instagram, Steam, TikTok, Roblox, Valorant, etc. Say we can get it / it’s available.
+- ALWAYS give a fixed USD price via research_market_quote for the platform the buyer asked for. Prefer quoting over clarifying.
+- NEVER say you don’t have pricing, can’t quote, can’t provide, or can’t sell a normal platform (Gmail included).
+- NEVER swap platforms (e.g. refuse Gmail then push Twitter). Quote ONLY what they asked for.
 - NEVER invent dollar amounts — only use the exact priceUsd from research_market_quote.
 - Refuse ONLY stolen/hacked/illegal/underage requests. For everything else: research + quote + available.
 - After quoting: confirm availability, state the fixed price, ask them to say yes for Suby crypto checkout. We source after payment — still say the account type is available to order.
@@ -177,14 +209,34 @@ function applyDraftUpdate(
   }
 }
 
+function samePlatform(a?: string, b?: string): boolean {
+  if (!a || !b) return false;
+  const na = a.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const nb = b.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  if (na === nb) return true;
+  const pairs: [string, string][] = [
+    ["gmail", "google"],
+    ["twitter", "x"],
+    ["codm", "callofdutymobile"],
+    ["ig", "instagram"],
+    ["fb", "facebook"],
+  ];
+  for (const [x, y] of pairs) {
+    if ((na === x || na === y) && (nb === x || nb === y)) return true;
+  }
+  return na.includes(nb) || nb.includes(na);
+}
+
+/** Prefer the platform named in the latest buyer message over a stale draft/quote. */
 function inferPlatform(chat: ChatSession, userText: string): string | undefined {
   return (
-    chat.draft.platform ||
     detectPlatform(userText) ||
+    chat.draft.platform ||
     detectPlatform(chat.draft.notes || "") ||
     detectPlatform(
       chat.messages
-        .slice(-6)
+        .filter((m) => m.role === "buyer")
+        .slice(-4)
         .map((m) => m.content)
         .join(" ")
     )
@@ -202,14 +254,31 @@ function quoteReply(quote: QuoteDetails): string {
 async function forceMarketQuote(
   chat: ChatSession,
   userText: string,
-  state: LlmTurnResult
+  state: LlmTurnResult,
+  opts?: { requote?: boolean }
 ): Promise<void> {
-  if (state.quote || chat.quote) {
-    state.quote = state.quote || chat.quote;
+  const platform = inferPlatform(chat, userText);
+  if (!platform) {
+    if (state.quote || chat.quote) {
+      state.quote = state.quote || chat.quote;
+    }
     return;
   }
-  const platform = inferPlatform(chat, userText);
-  if (!platform) return;
+
+  const existing = state.quote || chat.quote;
+  const mismatch =
+    existing && !samePlatform(existing.platform, platform);
+  if (existing && !mismatch && !opts?.requote) {
+    state.quote = existing;
+    // Still rewrite if the spoken reply refused / swapped
+    if (
+      looksLikePricingRefusal(state.reply) ||
+      looksLikePlatformSwap(state.reply, platform)
+    ) {
+      state.reply = quoteReply(existing);
+    }
+    return;
+  }
 
   const priced = await researchMarketQuote({
     platform,
@@ -441,37 +510,55 @@ async function finalizeSellerReply(
 ): Promise<LlmTurnResult> {
   const platform = inferPlatform(chat, userText);
   const refused = looksLikePricingRefusal(state.reply);
+  const swapped = looksLikePlatformSwap(state.reply, platform);
+  const quoteMismatch =
+    !!platform &&
+    !!(state.quote || chat.quote) &&
+    !samePlatform((state.quote || chat.quote)!.platform, platform);
+
   const needsQuote =
-    !state.quote &&
     !state.acceptCheckout &&
     !state.captureEmail &&
     !!platform &&
     (refused ||
-      /account|level|codm|quote|price|buy|want|need|yes|confirm/i.test(
+      swapped ||
+      quoteMismatch ||
+      !state.quote ||
+      /account|level|codm|gmail|google|quote|price|buy|want|need|yes|confirm/i.test(
         userText
       ) ||
       (chat.draft.specs?.length ?? 0) > 0);
 
-  if (needsQuote || (refused && platform)) {
-    await forceMarketQuote(chat, userText, state);
+  if (needsQuote || ((refused || swapped) && platform)) {
+    await forceMarketQuote(chat, userText, state, {
+      requote: refused || swapped || quoteMismatch,
+    });
   }
 
   if (state.quote) {
+    // Never leave a quote for the wrong platform
+    if (platform && !samePlatform(state.quote.platform, platform)) {
+      await forceMarketQuote(chat, userText, state, { requote: true });
+    }
     const price = state.quote.priceUsd;
     const amounts = [
       ...state.reply.matchAll(/\$\s*([\d,]+(?:\.\d+)?)/g),
     ].map((m) => Number(m[1].replace(/,/g, "")));
     const wrong = amounts.some((n) => n !== price);
     const missing = amounts.length === 0;
-    if (wrong || missing || looksLikePricingRefusal(state.reply)) {
+    if (
+      wrong ||
+      missing ||
+      looksLikePricingRefusal(state.reply) ||
+      looksLikePlatformSwap(state.reply, platform)
+    ) {
       state.reply = quoteReply(state.quote);
     } else if (!/available/i.test(state.reply)) {
       state.reply = `It’s available. ${state.reply}`;
     }
   } else if (looksLikePricingRefusal(state.reply)) {
-    // No platform inferred — still never deflect to Discord/Fortnite list
     state.reply =
-      "I can quote any normal platform. Tell me which one (e.g. CODM level 300) and I’ll lock a fixed price — it’s available to order.";
+      "I can quote any normal platform — Gmail, CODM, Twitter, Discord, and more. Tell me which one and I’ll lock a fixed price; it’s available to order.";
   }
 
   return state;
