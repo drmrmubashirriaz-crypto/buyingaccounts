@@ -371,7 +371,7 @@ export default function ChatApp() {
           )}
           <StatusPill status={order?.status || chat?.phase} />
           <a
-            href="/best-sites-to-buy-semrush-accounts"
+            href="/guides"
             className="text-xs text-ink-700/45 transition hover:text-ink-900"
           >
             Guides
@@ -488,11 +488,8 @@ export default function ChatApp() {
       </main>
 
       <footer className="relative z-10 mx-auto w-full max-w-3xl px-5 pb-6 pt-2 text-xs text-ink-700/40">
-        <a
-          href="/best-sites-to-buy-semrush-accounts"
-          className="transition hover:text-ink-900"
-        >
-          Guides · Best sites to buy Semrush accounts
+        <a href="/guides" className="transition hover:text-ink-900">
+          Guides · Best sites to buy accounts
         </a>
       </footer>
     </div>

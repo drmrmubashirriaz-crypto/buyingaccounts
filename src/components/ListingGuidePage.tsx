@@ -25,7 +25,9 @@ export default function ListingGuidePage({ guide }: { guide: ListingGuide }) {
           <span className="text-ink-700/30" aria-hidden>
             /
           </span>
-          <span className="text-ink-900">Guides</span>
+          <Link href="/guides" className="text-ink-900 transition hover:underline">
+            Guides
+          </Link>
         </nav>
       </header>
 
@@ -146,6 +148,9 @@ export default function ListingGuidePage({ guide }: { guide: ListingGuide }) {
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-ink-900/8 pt-4">
           <Link href="/" className="transition hover:text-ink-900">
             Home / chat
+          </Link>
+          <Link href="/guides" className="transition hover:text-ink-900">
+            All guides
           </Link>
           <Link
             href={`/${guide.slug}`}
